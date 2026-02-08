@@ -346,6 +346,116 @@ app.post('/api/agent/meal-reaction', (req, res) => {
   res.json({ success: true, message: 'Reaction recorded' });
 });
 
+// --- Apple Health Data ---
+app.get('/api/apple-health', (req, res) => {
+  try {
+    // Helper to parse CSV
+    const parseCSV = (filename) => {
+      const filePath = path.join(DATA_DIR, filename);
+      if (!fs.existsSync(filePath)) return [];
+      
+      const content = fs.readFileSync(filePath, 'utf8');
+      const lines = content.trim().split('\n');
+      const headers = lines[0].split(',');
+      
+      return lines.slice(1).map(line => {
+        const values = line.split(',');
+        const obj = {};
+        headers.forEach((header, i) => {
+          obj[header.trim()] = values[i]?.trim() || '';
+        });
+        return obj;
+      });
+    };
+
+    // Parse daily summary
+    const dailySummary = parseCSV('daily_summary.csv').map(row => ({
+      date: row.date,
+      sleepHours: parseFloat(row.sleep_hours) || 0,
+      hrvAvg: parseFloat(row.hrv_avg) || 0,
+      workouts: parseInt(row.workouts) || 0
+    }));
+
+    // Parse HRV data - aggregate by date
+    const hrvData = parseCSV('hrv_data.csv');
+    const hrvByDate = {};
+    hrvData.forEach(row => {
+      const date = row.date;
+      const hrv = parseFloat(row.hrv_ms) || 0;
+      if (!hrvByDate[date]) hrvByDate[date] = { values: [], avg: 0, min: 0, max: 0 };
+      hrvByDate[date].values.push(hrv);
+    });
+    
+    Object.keys(hrvByDate).forEach(date => {
+      const values = hrvByDate[date].values;
+      hrvByDate[date].avg = values.reduce((a, b) => a + b, 0) / values.length;
+      hrvByDate[date].min = Math.min(...values);
+      hrvByDate[date].max = Math.max(...values);
+      delete hrvByDate[date].values;
+    });
+
+    // Parse sleep data - aggregate by date
+    const sleepData = parseCSV('sleep_data.csv');
+    const sleepByDate = {};
+    sleepData.forEach(row => {
+      const date = row.date;
+      if (!sleepByDate[date]) {
+        sleepByDate[date] = { 
+          totalMinutes: 0, 
+          stages: { core: 0, deep: 0, rem: 0, awake: 0 },
+          startTime: row.start,
+          endTime: row.end
+        };
+      }
+      
+      const start = new Date(row.start);
+      const end = new Date(row.end);
+      const duration = (end - start) / (1000 * 60); // minutes
+      
+      sleepByDate[date].totalMinutes += duration;
+      
+      const stage = row.value;
+      if (stage.includes('Core')) sleepByDate[date].stages.core += duration;
+      else if (stage.includes('Deep')) sleepByDate[date].stages.deep += duration;
+      else if (stage.includes('REM')) sleepByDate[date].stages.rem += duration;
+      else if (stage.includes('Awake')) sleepByDate[date].stages.awake += duration;
+    });
+
+    // Convert minutes to hours
+    Object.keys(sleepByDate).forEach(date => {
+      const s = sleepByDate[date];
+      s.totalHours = s.totalMinutes / 60;
+      s.stages.core = s.stages.core / 60;
+      s.stages.deep = s.stages.deep / 60;
+      s.stages.rem = s.stages.rem / 60;
+      s.stages.awake = s.stages.awake / 60;
+    });
+
+    // Get last 30 days of data
+    const last30Days = dailySummary.slice(-30);
+    const recentHrv = Object.entries(hrvByDate).slice(-30);
+    const recentSleep = Object.entries(sleepByDate).slice(-30);
+
+    res.json({
+      summary: {
+        totalDays: dailySummary.length,
+        dateRange: {
+          start: dailySummary[0]?.date || null,
+          end: dailySummary[dailySummary.length - 1]?.date || null
+        }
+      },
+      dailySummary: last30Days,
+      hrvData: recentHrv.map(([date, data]) => ({ date, ...data })),
+      sleepData: recentSleep.map(([date, data]) => ({ date, ...data })),
+      allHrvByDate: hrvByDate,
+      allSleepByDate: sleepByDate
+    });
+  } catch (err) {
+    console.error('Error reading Apple Health data:', err);
+    res.status(500).json({ error: 'Failed to read Apple Health data', details: err.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
