@@ -1,0 +1,11 @@
+[
+  {
+    "id": "1",
+    "type": "phase_end_soon",
+    "message": "Kill phase ends in 9 days (Feb 17)",
+    "details": "Plan reintroduction phase and follow-up testing",
+    "priority": "medium",
+    "dismissed": false,
+    "createdAt": "2025-02-08T00:00:00Z"
+  }
+]

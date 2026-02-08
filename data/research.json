@@ -1,0 +1,46 @@
+[
+  {
+    "id": "1",
+    "title": "Allicin from Garlic: Antimicrobial Properties against SIBO",
+    "summary": "Stabilized allicin (Allimax) shows potent activity against methane and hydrogen-producing bacteria. Effective biofilm disruptor when combined with Neem.",
+    "source": "Journal of Functional Medicine",
+    "relevance": "high",
+    "tags": ["allicin", "sibo", "antimicrobial", "biofilm"],
+    "read": true,
+    "addedBy": "agent",
+    "createdAt": "2025-01-15T10:00:00Z"
+  },
+  {
+    "id": "2",
+    "title": "Prokinetics in SIBO Treatment: Ginger and Artichoke Extract",
+    "summary": "Prokinetic therapy stimulates the migrating motor complex (MMC) between meals. Ginger compounds enhance phase III contractions. Artichoke extract improves bile flow.",
+    "source": "Gastroenterology Research",
+    "relevance": "high",
+    "tags": ["prokinetic", "ginger", "artichoke", "mmc", "sibo"],
+    "read": false,
+    "addedBy": "agent",
+    "createdAt": "2025-01-18T14:30:00Z"
+  },
+  {
+    "id": "3",
+    "title": "Carnivore Diet and Gut Health: Impact on Microbiome",
+    "summary": "Zero-fiber carnivore diet can starve hydrogen and methane producing bacteria. Short-term use during kill phase may reduce bacterial load significantly.",
+    "source": "Nutrition and Metabolism",
+    "relevance": "medium",
+    "tags": ["carnivore", "diet", "fiber", "microbiome", "sibo"],
+    "read": false,
+    "addedBy": "agent",
+    "createdAt": "2025-01-20T09:00:00Z"
+  },
+  {
+    "id": "4",
+    "title": "Neem Extract: Traditional Uses and Modern Applications",
+    "summary": "Azadirachta indica (Neem) has broad-spectrum antimicrobial properties. Effective against biofilm-forming bacteria. Synergistic with allicin compounds.",
+    "source": "Phytotherapy Research",
+    "relevance": "high",
+    "tags": ["neem", "antimicrobial", "biofilm", "allicin"],
+    "read": true,
+    "addedBy": "agent",
+    "createdAt": "2025-01-22T16:00:00Z"
+  }
+]

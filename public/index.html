@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Health Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            gray: {
+              850: '#1f2937',
+              900: '#111827',
+              950: '#0b0f19',
+            },
+            primary: {
+              500: '#6366f1',
+              600: '#4f46e5',
+            },
+            accent: {
+              green: '#10b981',
+              yellow: '#f59e0b',
+              red: '#ef4444',
+              blue: '#3b82f6',
+              purple: '#8b5cf6',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #0b0f19; color: #e5e7eb; }
+    .card { background: #1f2937; border-radius: 12px; border: 1px solid #374151; }
+    .nav-item { transition: all 0.2s; }
+    .nav-item:hover { background: #374151; }
+    .nav-item.active { background: #4f46e5; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    input, select, textarea { background: #374151; border: 1px solid #4b5563; color: white; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #6366f1; }
+    .slider-thumb::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: #6366f1; cursor: pointer; }
+    .timeline-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .supplement-card { transition: transform 0.2s; }
+    .supplement-card:hover { transform: translateY(-2px); }
+    @media (max-width: 640px) {
+      .mobile-full { width: 100%; }
+      .mobile-stack { flex-direction: column; }
+      .touch-target { min-height: 44px; min-width: 44px; }
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="flex flex-col md:flex-row min-h-screen">
+    <!-- Sidebar Navigation -->
+    <nav class="w-full md:w-64 bg-gray-900 border-r border-gray-800 md:min-h-screen">
+      <div class="p-4 border-b border-gray-800">
+        <h1 class="text-xl font-bold text-white">🩺 Health Dashboard</h1>
+        <p class="text-xs text-gray-400 mt-1" id="current-date"></p>
+      </div>
+      <div class="flex md:flex-col overflow-x-auto md:overflow-visible">
+        <button onclick="showTab('overview')" id="nav-overview" class="nav-item active flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>🏠</span> Overview
+        </button>
+        <button onclick="showTab('protocol')" id="nav-protocol" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>💊</span> Protocol
+        </button>
+        <button onclick="showTab('symptoms')" id="nav-symptoms" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>📊</span> Symptoms
+        </button>
+        <button onclick="showTab('meals')" id="nav-meals" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>🍖</span> Meals
+        </button>
+        <button onclick="showTab('vitals')" id="nav-vitals" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>💓</span> Vitals
+        </button>
+        <button onclick="showTab('research')" id="nav-research" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>🔬</span> Research
+        </button>
+        <button onclick="showTab('briefings')" id="nav-briefings" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>📋</span> Briefings
+        </button>
+      </div>
+      <!-- Quick Log Button (Mobile Fixed) -->
+      <div class="hidden md:block p-4 border-t border-gray-800">
+        <button onclick="showQuickLog()" class="w-full bg-primary-600 hover:bg-primary-500 text-white font-medium py-3 px-4 rounded-lg touch-target">
+          ⚡ Quick Log
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-4 md:p-6 overflow-auto">
+      <!-- Mobile Quick Log -->
+      <div class="md:hidden mb-4">
+        <button onclick="showQuickLog()" class="w-full bg-primary-600 hover:bg-primary-500 text-white font-medium py-4 px-4 rounded-lg touch-target text-lg">
+          ⚡ Quick Log
+        </button>
+      </div>
+
+      <!-- TAB 1: OVERVIEW -->
+      <div id="tab-overview" class="tab-content active">
+        <h2 class="text-2xl font-bold mb-6">Dashboard Overview</h2>
+        
+        <!-- Status Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="card p-4">
+            <p class="text-xs text-gray-400 uppercase">Phase</p>
+            <p class="text-xl font-bold text-accent-green" id="phase-name">Kill Phase</p>
+            <p class="text-xs text-gray-400" id="phase-days">9 days left</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs text-gray-400 uppercase">Today's Logs</p>
+            <p class="text-3xl font-bold text-primary-500" id="today-logs">0</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs text-gray-400 uppercase">Supplements</p>
+            <p class="text-3xl font-bold text-accent-blue" id="today-supps">0/6</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs text-gray-400 uppercase">Symptoms</p>
+            <p class="text-3xl font-bold text-accent-yellow" id="today-symptoms">0</p>
+          </div>
+        </div>
+
+        <!-- Protocol Card -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span class="text-accent-green">💊</span> Current Protocol
+          </h3>
+          <div id="protocol-overview" class="grid md:grid-cols-3 gap-4">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span class="text-accent-red">🔔</span> Alerts
+          </h3>
+          <div id="alerts-list" class="space-y-2">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card p-6">
+          <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
+          <div id="recent-activity" class="space-y-2 text-sm">
+            <p class="text-gray-400">No recent activity</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PROTOCOL -->
+      <div id="tab-protocol" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Treatment Protocol</h2>
+        
+        <!-- Phase Info -->
+        <div class="card p-6 mb-6">
+          <div class="flex flex-wrap justify-between items-center mb-4">
+            <div>
+              <h3 class="text-xl font-bold text-accent-green" id="protocol-phase-name">Kill Phase</h3>
+              <p class="text-sm text-gray-400" id="protocol-phase-dates">Jan 20 - Feb 17, 2025</p>
+            </div>
+            <div class="text-right">
+              <div class="text-3xl font-bold text-primary-500" id="phase-progress">76%</div>
+              <p class="text-xs text-gray-400">Complete</p>
+            </div>
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-3">
+            <div class="bg-gradient-to-r from-accent-green to-primary-500 h-3 rounded-full transition-all" id="phase-progress-bar" style="width: 76%"></div>
+          </div>
+          <p class="text-sm text-gray-400 mt-2">Diet: <span class="text-white">Strict Carnivore</span> (eggs, meat, coffee, Coke Zero)</p>
+        </div>
+
+        <!-- Daily Schedule -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">Daily Schedule</h3>
+          <div id="schedule-timeline" class="space-y-4">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Supplements Detail -->
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Supplements</h3>
+            <div id="supplements-list" class="space-y-3">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Protocol History</h3>
+            <div id="protocol-history" class="text-sm text-gray-400">
+              <p>No changes yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: SYMPTOMS -->
+      <div id="tab-symptoms" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Symptom Tracker</h2>
+        
+        <!-- Quick Log Symptom -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">Quick Log Symptom</h3>
+          <form id="symptom-form" class="space-y-4">
+            <div class="grid md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm mb-1">Symptom Type</label>
+                <select id="symptom-type" class="w-full p-3 rounded-lg touch-target">
+                  <option value="bloating">Bloating</option>
+                  <option value="gas">Gas</option>
+                  <option value="abdominal_pain">Abdominal Pain</option>
+                  <option value="nausea">Nausea</option>
+                  <option value="fatigue">Fatigue</option>
+                  <option value="brain_fog">Brain Fog</option>
+                  <option value="constipation">Constipation</option>
+                  <option value="diarrhea">Diarrhea</option>
+                  <option value="heartburn">Heartburn</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Time</label>
+                <input type="time" id="symptom-time" class="w-full p-3 rounded-lg touch-target">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm mb-2">Severity: <span id="severity-value" class="text-primary-500 font-bold">5</span>/10</label>
+              <input type="range" id="symptom-severity" min="0" max="10" value="5" class="w-full h-8 slider-thumb touch-target">
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>None</span>
+                <span>Mild</span>
+                <span>Moderate</span>
+                <span>Severe</span>
+                <span>Extreme</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm mb-1">Notes (optional)</label>
+              <textarea id="symptom-notes" rows="2" class="w-full p-3 rounded-lg" placeholder="What were you doing? What did you eat?"></textarea>
+            </div>
+            <button type="submit" class="w-full md:w-auto bg-accent-red hover:bg-red-600 text-white font-medium py-4 px-8 rounded-lg touch-target text-lg">
+              Log Symptom
+            </button>
+          </form>
+        </div>
+
+        <!-- Symptom Trends -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Symptom Trends</h3>
+            <canvas id="symptoms-chart" height="200"></canvas>
+          </div>
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Correlation Insights</h3>
+            <div id="correlation-panel" class="space-y-3 text-sm">
+              <div class="p-3 bg-gray-800 rounded-lg">
+                <p class="text-gray-400">Start logging symptoms to see correlations with meals, supplements, and sleep.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Symptoms -->
+        <div class="card p-6">
+          <h3 class="text-lg font-semibold mb-4">Recent Symptoms</h3>
+          <div id="recent-symptoms-list" class="space-y-2">
+            <p class="text-gray-400">No symptoms logged yet</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: MEALS -->
+      <div id="tab-meals" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Meals & Reactions</h2>
+        
+        <!-- Quick Log Meal -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">Quick Log Meal</h3>
+          <form id="meal-form" class="space-y-4">
+            <div class="grid md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm mb-1">Meal Type</label>
+                <select id="meal-type" class="w-full p-3 rounded-lg touch-target">
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                  <option value="snack">Snack</option>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-sm mb-1">Foods Eaten</label>
+                <input type="text" id="meal-foods" class="w-full p-3 rounded-lg touch-target" placeholder="e.g., eggs, bacon, coffee">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm mb-1">Reaction (if any)</label>
+              <div class="grid grid-cols-3 gap-2">
+                <button type="button" onclick="setReaction('none')" class="reaction-btn p-3 rounded-lg bg-gray-700 hover:bg-gray-600 touch-target" data-value="none">✅ None</button>
+                <button type="button" onclick="setReaction('mild')" class="reaction-btn p-3 rounded-lg bg-gray-700 hover:bg-accent-yellow touch-target" data-value="mild">⚠️ Mild</button>
+                <button type="button" onclick="setReaction('bad')" class="reaction-btn p-3 rounded-lg bg-gray-700 hover:bg-accent-red touch-target" data-value="bad">❌ Bad</button>
+              </div>
+              <input type="hidden" id="meal-reaction" value="none">
+            </div>
+            <div>
+              <label class="block text-sm mb-1">Notes</label>
+              <textarea id="meal-notes" rows="2" class="w-full p-3 rounded-lg" placeholder="How did you feel? Energy level?"></textarea>
+            </div>
+            <button type="submit" class="w-full md:w-auto bg-accent-green hover:bg-green-600 text-white font-medium py-4 px-8 rounded-lg touch-target text-lg">
+              Log Meal
+            </button>
+          </form>
+        </div>
+
+        <!-- Reaction Matrix -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">Reaction Matrix</h3>
+          <div id="reaction-matrix" class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-700">
+                  <th class="text-left p-2">Food</th>
+                  <th class="text-center p-2">Times Eaten</th>
+                  <th class="text-center p-2">Good</th>
+                  <th class="text-center p-2">Neutral</th>
+                  <th class="text-center p-2">Bad</th>
+                  <th class="text-center p-2">Status</th>
+                </tr>
+              </thead>
+              <tbody id="reaction-matrix-body">
+                <tr><td colspan="6" class="p-4 text-gray-400 text-center">Start logging meals to build your reaction matrix</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Reintroduction Tracker -->
+        <div class="card p-6">
+          <h3 class="text-lg font-semibold mb-4">Reintroduction Tracker</h3>
+          <p class="text-sm text-gray-400 mb-4">Track foods you reintroduce after the elimination phase</p>
+          <div id="reintroduction-list" class="space-y-2">
+            <p class="text-gray-400">Kill phase still active. Reintroduction tracking available after Feb 17.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 5: VITALS -->
+      <div id="tab-vitals" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Vitals & Energy</h2>
+        
+        <!-- Quick Log Section -->
+        <div class="grid md:grid-cols-3 gap-4 mb-6">
+          <!-- Energy Log -->
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Log Energy</h3>
+            <form id="energy-form" class="space-y-3">
+              <div>
+                <label class="block text-sm mb-2">Energy Level</label>
+                <input type="range" id="energy-level" min="0" max="10" value="5" class="w-full h-6 slider-thumb">
+                <div class="flex justify-between text-xs text-gray-400">
+                  <span>Exhausted</span>
+                  <span class="text-primary-500 font-bold" id="energy-value">5</span>
+                  <span>Energized</span>
+                </div>
+              </div>
+              <button type="submit" class="w-full bg-accent-blue hover:bg-blue-600 text-white py-3 rounded-lg touch-target">
+                Log Energy
+              </button>
+            </form>
+          </div>
+
+          <!-- Sleep Log -->
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Log Sleep</h3>
+            <form id="sleep-form" class="space-y-3">
+              <div>
+                <label class="block text-sm mb-1">Hours Slept</label>
+                <input type="number" id="sleep-hours" min="0" max="24" step="0.5" class="w-full p-3 rounded-lg touch-target" placeholder="7.5">
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Sleep Quality</label>
+                <select id="sleep-quality" class="w-full p-3 rounded-lg touch-target">
+                  <option value="poor">Poor</option>
+                  <option value="fair">Fair</option>
+                  <option value="good" selected>Good</option>
+                  <option value="excellent">Excellent</option>
+                </select>
+              </div>
+              <button type="submit" class="w-full bg-accent-purple hover:bg-purple-600 text-white py-3 rounded-lg touch-target">
+                Log Sleep
+              </button>
+            </form>
+          </div>
+
+          <!-- Exercise Log -->
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Log Exercise</h3>
+            <form id="exercise-form" class="space-y-3">
+              <div>
+                <label class="block text-sm mb-1">Type</label>
+                <select id="exercise-type" class="w-full p-3 rounded-lg touch-target">
+                  <option value="walking">Walking</option>
+                  <option value="weights">Weights</option>
+                  <option value="cardio">Cardio</option>
+                  <option value="yoga">Yoga/Stretching</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Duration (min)</label>
+                <input type="number" id="exercise-duration" min="0" class="w-full p-3 rounded-lg touch-target" placeholder="30">
+              </div>
+              <button type="submit" class="w-full bg-accent-yellow hover:bg-yellow-600 text-black py-3 rounded-lg touch-target">
+                Log Exercise
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Energy Trend</h3>
+            <canvas id="energy-chart" height="200"></canvas>
+          </div>
+          <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Sleep Duration</h3>
+            <canvas id="sleep-chart" height="200"></canvas>
+          </div>
+        </div>
+
+        <!-- Correlations -->
+        <div class="card p-6">
+          <h3 class="text-lg font-semibold mb-4">Health Correlations</h3>
+          <div id="health-correlations" class="grid md:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-800 rounded-lg text-center">
+              <p class="text-gray-400 text-sm">Sleep vs Energy</p>
+              <p class="text-xl font-bold text-gray-500">--</p>
+              <p class="text-xs text-gray-500">Need more data</p>
+            </div>
+            <div class="p-4 bg-gray-800 rounded-lg text-center">
+              <p class="text-gray-400 text-sm">Exercise vs Sleep</p>
+              <p class="text-xl font-bold text-gray-500">--</p>
+              <p class="text-xs text-gray-500">Need more data</p>
+            </div>
+            <div class="p-4 bg-gray-800 rounded-lg text-center">
+              <p class="text-gray-400 text-sm">Diet vs Symptoms</p>
+              <p class="text-xl font-bold text-gray-500">--</p>
+              <p class="text-xs text-gray-500">Need more data</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 6: RESEARCH -->
+      <div id="tab-research" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Research Library</h2>
+        
+        <!-- Search -->
+        <div class="card p-4 mb-6">
+          <div class="flex gap-2">
+            <input type="text" id="research-search" class="flex-1 p-3 rounded-lg touch-target" placeholder="Search studies, keywords, or tags...">
+            <button onclick="searchResearch()" class="bg-primary-600 hover:bg-primary-500 text-white px-6 py-3 rounded-lg touch-target">
+              Search
+            </button>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="flex flex-wrap gap-2 mb-6">
+          <button onclick="filterByTag('all')" class="px-3 py-1 bg-primary-600 rounded-full text-sm">All</button>
+          <button onclick="filterByTag('sibo')" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-full text-sm">SIBO</button>
+          <button onclick="filterByTag('allicin')" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-full text-sm">Allicin</button>
+          <button onclick="filterByTag('prokinetic')" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-full text-sm">Prokinetic</button>
+          <button onclick="filterByTag('diet')" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-full text-sm">Diet</button>
+          <button onclick="filterByTag('biofilm')" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-full text-sm">Biofilm</button>
+        </div>
+
+        <!-- Research Cards -->
+        <div id="research-list" class="space-y-4">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- TAB 7: BRIEFINGS -->
+      <div id="tab-briefings" class="tab-content">
+        <h2 class="text-2xl font-bold mb-6">Health Briefings</h2>
+        
+        <!-- Generate Briefing Buttons -->
+        <div class="flex gap-4 mb-6">
+          <button onclick="requestBriefing('morning')" class="flex-1 bg-gradient-to-r from-accent-yellow to-yellow-600 text-black font-medium py-4 px-6 rounded-lg touch-target">
+            🌅 Generate Morning Briefing
+          </button>
+          <button onclick="requestBriefing('evening')" class="flex-1 bg-gradient-to-r from-accent-purple to-purple-700 text-white font-medium py-4 px-6 rounded-lg touch-target">
+            🌙 Generate Evening Briefing
+          </button>
+        </div>
+
+        <!-- Briefings List -->
+        <div id="briefings-list" class="space-y-4">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Quick Log Modal -->
+  <div id="quick-log-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden flex items-center justify-center p-4">
+    <div class="card w-full max-w-lg max-h-[90vh] overflow-auto">
+      <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+        <h3 class="text-lg font-bold">⚡ Quick Log</h3>
+        <button onclick="hideQuickLog()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="quickLogType('supplement')" class="p-4 bg-gray-800 hover:bg-gray-700 rounded-lg text-center">
+            <div class="text-2xl mb-1">💊</div>
+            <div class="text-sm">Supplement</div>
+          </button>
+          <button onclick="quickLogType('symptom')" class="p-4 bg-gray-800 hover:bg-accent-red rounded-lg text-center">
+            <div class="text-2xl mb-1">😣</div>
+            <div class="text-sm">Symptom</div>
+          </button>
+          <button onclick="quickLogType('meal')" class="p-4 bg-gray-800 hover:bg-accent-green rounded-lg text-center">
+            <div class="text-2xl mb-1">🍖</div>
+            <div class="text-sm">Meal</div>
+          </button>
+          <button onclick="quickLogType('energy')" class="p-4 bg-gray-800 hover:bg-accent-blue rounded-lg text-center">
+            <div class="text-2xl mb-1">⚡</div>
+            <div class="text-sm">Energy</div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
