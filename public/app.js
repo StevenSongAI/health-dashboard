@@ -40,6 +40,10 @@ function showTab(tabName) {
   if (tabName === 'meals') loadMeals();
   if (tabName === 'vitals') loadVitals();
   if (tabName === 'protocol') renderProtocol();
+  if (tabName === 'sibo-advanced') {
+    // Initialize first SIBO section
+    showSiboSection('dieoff');
+  }
 }
 
 // Setup Event Listeners
@@ -172,21 +176,62 @@ async function loadOverview() {
 function renderProtocol() {
   if (!protocolData) return;
   
-  const phase = protocolData.phase || {};
-  document.getElementById('protocol-phase-name').textContent = phase.name || 'Kill Phase';
+  // Use symptom-based tracking, not day count
+  const phaseName = protocolData.phase || 'Kill Phase';
+  const status = protocolData.status || 'Active';
+  const daysOnProtocol = protocolData.daysOnProtocol || 0;
+  
+  document.getElementById('protocol-phase-name').textContent = phaseName;
   document.getElementById('protocol-phase-dates').textContent = 
-    `${phase.startDate || 'Jan 20'} - ${phase.endDate || 'Feb 17'}, 2025`;
+    `Day ${daysOnProtocol} • ${status}`;
   
-  // Calculate progress
-  const start = new Date(phase.startDate || '2025-01-20');
-  const end = new Date(phase.endDate || '2025-02-17');
-  const today = new Date();
-  const total = end - start;
-  const elapsed = today - start;
-  const progress = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+  // Calculate progress based on symptom improvement, not days
+  let progress = 0;
+  if (protocolData.symptoms) {
+    const bloatingImprovement = protocolData.symptoms.bloating?.improvement || '0%';
+    progress = parseInt(bloatingImprovement);
+    
+    // Show symptom-based progress
+    document.getElementById('phase-progress').textContent = `${bloatingImprovement} improved`;
+  } else {
+    // Fallback to "Ongoing" if no symptom data
+    document.getElementById('phase-progress').textContent = 'Ongoing';
+    progress = 50; // Show partial bar
+  }
   
-  document.getElementById('phase-progress').textContent = `${progress}%`;
   document.getElementById('phase-progress-bar').style.width = `${progress}%`;
+  
+  // Show exit criteria if available
+  if (protocolData.exitCriteria && Array.isArray(protocolData.exitCriteria)) {
+    const exitCriteriaHtml = `
+      <div class="mt-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+        <h4 class="font-semibold text-accent-blue mb-3">Exit Criteria (When to Stop Protocol)</h4>
+        <div class="space-y-2">
+          ${protocolData.exitCriteria.map(criterion => {
+            // Check if criterion is met (basic heuristic)
+            const isMet = false; // Will be dynamic later
+            return `
+              <div class="flex items-start gap-2">
+                <span class="text-lg">${isMet ? '✅' : '⏳'}</span>
+                <span class="text-sm ${isMet ? 'text-accent-green' : 'text-gray-400'}">${criterion}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="mt-3 text-xs text-gray-500">
+          Protocol continues until ALL criteria are met
+        </div>
+      </div>
+    `;
+    
+    // Insert after progress bar
+    const progressBar = document.getElementById('phase-progress-bar').parentElement.parentElement;
+    const existingCriteria = progressBar.nextElementSibling;
+    if (existingCriteria && existingCriteria.classList.contains('exit-criteria')) {
+      existingCriteria.remove();
+    }
+    progressBar.insertAdjacentHTML('afterend', `<div class="exit-criteria">${exitCriteriaHtml}</div>`);
+  }
   
   // Schedule timeline
   const scheduleTimeline = document.getElementById('schedule-timeline');
@@ -705,6 +750,296 @@ function showToast(message) {
 document.getElementById('quick-log-modal').addEventListener('click', (e) => {
   if (e.target.id === 'quick-log-modal') hideQuickLog();
 });
+
+// ============ SIBO ADVANCED FUNCTIONS ============
+
+function showSiboSection(section) {
+  // Hide all sections
+  document.querySelectorAll('.sibo-section').forEach(s => s.classList.add('hidden'));
+  // Show selected
+  document.getElementById(`sibo-section-${section}`).classList.remove('hidden');
+  // Update button states
+  document.querySelectorAll('[id^="sibo-btn-"]').forEach(btn => {
+    btn.classList.remove('ring-2', 'ring-white');
+  });
+  document.getElementById(`sibo-btn-${section}`).classList.add('ring-2', 'ring-white');
+  
+  // Load data if needed
+  if (section === 'history') loadTreatmentHistory();
+  if (section === 'schedule') loadProtocolSchedule();
+  if (section === 'maintenance') loadMaintenanceStatus();
+}
+
+// Die-Off Manager
+async function logDieOffEpisode() {
+  const severity = parseInt(document.getElementById('dieoff-severity').value);
+  const symptoms = Array.from(document.getElementById('dieoff-symptoms').selectedOptions).map(o => o.value);
+  
+  await apiPost('/api/dieoff/episodes', { severity, symptoms, notes: '' });
+  showToast('Die-off episode logged');
+  document.getElementById('dieoff-severity').value = 5;
+  document.getElementById('dieoff-severity-val').textContent = '5';
+}
+
+// SIFO Risk Assessment
+async function calculateSifoRisk() {
+  const checkboxes = document.querySelectorAll('.sifo-risk:checked');
+  const riskFactors = Array.from(checkboxes).map(cb => cb.value);
+  
+  const result = await apiPost('/api/sifo/assessment', { riskFactors });
+  
+  const resultDiv = document.getElementById('sifo-result');
+  resultDiv.classList.remove('hidden');
+  
+  const colors = { low: 'green', moderate: 'yellow', high: 'red' };
+  const color = colors[result.riskLevel] || 'gray';
+  
+  resultDiv.innerHTML = `
+    <div class="bg-${color}-900 border border-${color}-500 p-4 rounded-lg">
+      <div class="text-center mb-4">
+        <div class="text-4xl font-bold text-${color}-400">${result.score}</div>
+        <div class="text-lg capitalize text-${color}-300">${result.riskLevel} Risk</div>
+      </div>
+      <div class="border-t border-${color}-700 pt-4">
+        <h4 class="font-bold mb-2">Recommendations:</h4>
+        <ul class="space-y-1 text-sm">
+          ${result.recommendations.map(r => `<li>• ${r}</li>`).join('')}
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+// Treatment History
+async function loadTreatmentHistory() {
+  const analysis = await apiGet('/api/treatment-history/analysis');
+  const container = document.getElementById('treatment-analysis');
+  
+  if (!analysis.totalTreatments) {
+    container.innerHTML = `
+      <div class="text-center py-8 text-gray-400">
+        <p>No treatment history recorded yet</p>
+        <p class="text-sm mt-2">Add your past treatments below to get personalized recommendations</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-800 p-4 rounded-lg text-center">
+        <div class="text-2xl font-bold text-accent-blue">${analysis.totalTreatments}</div>
+        <div class="text-xs text-gray-400">Total Treatments</div>
+      </div>
+      <div class="bg-gray-800 p-4 rounded-lg text-center">
+        <div class="text-2xl font-bold text-red-400">${analysis.patterns.noBiofilmDisruption.count}</div>
+        <div class="text-xs text-gray-400">No Biofilm</div>
+      </div>
+      <div class="bg-gray-800 p-4 rounded-lg text-center">
+        <div class="text-2xl font-bold text-yellow-400">${analysis.patterns.insufficientDuration.count}</div>
+        <div class="text-xs text-gray-400">Too Short</div>
+      </div>
+      <div class="bg-gray-800 p-4 rounded-lg text-center">
+        <div class="text-2xl font-bold text-accent-purple">${analysis.patterns.noProkinetic.count}</div>
+        <div class="text-xs text-gray-400">No Prokinetic</div>
+      </div>
+    </div>
+    <div class="bg-accent-green bg-opacity-10 border border-accent-green p-4 rounded-lg">
+      <h4 class="font-bold text-accent-green mb-2">🎯 Recommended Protocol Adjustments</h4>
+      <ul class="space-y-1">
+        ${analysis.recommendations.map(r => `<li>✓ ${r}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+async function addTreatmentHistory() {
+  const treatment = {
+    name: document.getElementById('treatment-name').value,
+    durationWeeks: parseInt(document.getElementById('treatment-weeks').value),
+    outcome: document.getElementById('treatment-outcome').value,
+    biofilmDisruptors: document.getElementById('treatment-biofilm').checked,
+    prokinetic: document.getElementById('treatment-prokinetic').checked,
+    underdosed: document.getElementById('treatment-underdosed').checked
+  };
+  
+  await apiPost('/api/treatment-history', treatment);
+  showToast('Treatment added to history');
+  loadTreatmentHistory();
+  
+  // Clear form
+  document.getElementById('treatment-name').value = '';
+  document.getElementById('treatment-weeks').value = '';
+}
+
+// Protocol Schedule
+async function loadProtocolSchedule() {
+  const week = document.getElementById('current-protocol-week').value || 1;
+  const schedule = await apiGet(`/api/protocol-schedule/${week}`);
+  
+  const container = document.getElementById('protocol-schedule-display');
+  
+  if (schedule.maintenance) {
+    container.innerHTML = `
+      <div class="bg-accent-green bg-opacity-20 border border-accent-green p-6 rounded-lg text-center">
+        <div class="text-4xl mb-4">🎉</div>
+        <h4 class="text-xl font-bold text-accent-green mb-2">Protocol Complete!</h4>
+        <p>Transition to maintenance phase. Setup relapse prevention.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = `
+    <div class="bg-gray-800 p-4 rounded-lg mb-4">
+      <div class="flex justify-between items-center mb-2">
+        <h4 class="font-bold text-lg">${schedule.phase}</h4>
+        <span class="text-sm text-gray-400">Week ${schedule.weeks}</span>
+      </div>
+      ${schedule.noAntimicrobials ? '<div class="text-yellow-400 text-sm mb-4">⚠️ NO ANTIMICROBIALS THIS PHASE</div>' : ''}
+    </div>
+    
+    <div class="space-y-3">
+      ${schedule.supplements.map(s => `
+        <div class="bg-gray-800 p-4 rounded-lg flex justify-between items-center">
+          <div>
+            <div class="font-bold">${s.name} ${s.dose}</div>
+            <div class="text-sm text-gray-400">${s.timing}</div>
+          </div>
+          <span class="text-sm bg-primary-600 px-3 py-1 rounded-full">${s.when}</span>
+        </div>
+      `).join('')}
+    </div>
+    
+    ${schedule.dailyTotals ? `
+      <div class="mt-4 bg-accent-blue bg-opacity-10 border border-accent-blue p-4 rounded-lg">
+        <h5 class="font-bold text-accent-blue mb-2">Daily Totals</h5>
+        <div class="grid grid-cols-3 gap-4 text-center">
+          ${Object.entries(schedule.dailyTotals).map(([k,v]) => `
+            <div>
+              <div class="text-lg font-bold">${v}</div>
+              <div class="text-xs text-gray-400 capitalize">${k}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+  `;
+}
+
+// Maintenance
+async function loadMaintenanceStatus() {
+  const status = await apiGet('/api/maintenance/schedule');
+  const container = document.getElementById('maintenance-status');
+  
+  if (status.error) {
+    container.innerHTML = `
+      <div class="text-center py-8 text-gray-400">
+        <p>${status.error}</p>
+        <p class="text-sm mt-2">Mark your protocol as complete to see maintenance schedule</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const phaseColors = {
+    'Critical Window': 'red',
+    'Consolidation': 'yellow',
+    'Maintenance': 'blue',
+    'Sustain': 'green'
+  };
+  const color = phaseColors[status.phase] || 'gray';
+  
+  container.innerHTML = `
+    <div class="bg-${color}-900 bg-opacity-30 border border-${color}-500 p-6 rounded-lg">
+      <div class="flex justify-between items-center mb-4">
+        <h4 class="text-xl font-bold text-${color}-400">${status.phase}</h4>
+        <span class="text-sm text-gray-400">Week ${status.weeksSince} post-protocol</span>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div class="bg-gray-800 p-4 rounded-lg">
+          <div class="text-sm text-gray-400 mb-1">Prokinetic</div>
+          <div class="font-medium">${status.schedule.prokinetic}</div>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg">
+          <div class="text-sm text-gray-400 mb-1">Antimicrobials</div>
+          <div class="font-medium">${status.schedule.antimicrobials}</div>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg">
+          <div class="text-sm text-gray-400 mb-1">Monitoring</div>
+          <div class="font-medium">${status.schedule.monitoring}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function markProtocolComplete() {
+  await apiPost('/api/protocol/complete', {});
+  showToast('Protocol marked complete - begin maintenance!');
+  loadMaintenanceStatus();
+}
+
+// Reports
+async function generateReport(type) {
+  const endpoint = type === 'medical' ? '/api/reports/medical' : '/api/reports/weekly';
+  const report = await apiGet(endpoint);
+  
+  const container = document.getElementById('report-display');
+  
+  if (type === 'medical') {
+    container.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex justify-between items-center border-b border-gray-700 pb-2">
+          <span class="text-gray-400">Generated</span>
+          <span>${new Date(report.generatedAt).toLocaleString()}</span>
+        </div>
+        
+        <div>
+          <h5 class="font-bold mb-2">Treatment History</h5>
+          <p>Total treatments: ${report.treatmentHistory.total}</p>
+        </div>
+        
+        <div>
+          <h5 class="font-bold mb-2">Symptom Summary (30 days)</h5>
+          <div class="grid grid-cols-2 gap-2">
+            ${Object.entries(report.symptomSummary.averages).map(([type, data]) => `
+              <div class="bg-gray-700 p-2 rounded">
+                <div class="text-sm capitalize">${type}</div>
+                <div class="text-lg font-bold">${data.avg}/10</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        
+        <div>
+          <h5 class="font-bold mb-2">Die-Off Episodes (30 days)</h5>
+          <p>Count: ${report.dieoffEpisodes.count} | Avg Severity: ${report.dieoffEpisodes.avgSeverity}/10</p>
+        </div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="space-y-4">
+        <div class="grid grid-cols-3 gap-4">
+          <div class="bg-gray-700 p-3 rounded text-center">
+            <div class="text-2xl font-bold text-accent-green">${report.adherence.rate}%</div>
+            <div class="text-xs text-gray-400">Adherence</div>
+          </div>
+          <div class="bg-gray-700 p-3 rounded text-center">
+            <div class="text-2xl font-bold text-accent-blue">${report.symptoms.count}</div>
+            <div class="text-xs text-gray-400">Symptoms</div>
+          </div>
+          <div class="bg-gray-700 p-3 rounded text-center">
+            <div class="text-2xl font-bold ${report.dieoffEpisodes > 0 ? 'text-accent-red' : 'text-gray-400'}">${report.dieoffEpisodes}</div>
+            <div class="text-xs text-gray-400">Die-Off</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
 
 // Start
 init();
