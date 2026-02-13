@@ -7,6 +7,13 @@ A personal health tracking dashboard with protocol management, symptom tracking,
 - **Overview**: At-a-glance status, protocol card, today's status, alerts
 - **Protocol**: Supplement schedule with timing visual, history timeline
 - **Symptom Tracker**: Quick log form (sliders 0-10), trend charts, correlation panel
+- **SIBO Advanced**: Comprehensive SIBO management tools
+  - Die-Off Manager: Episode logging with severity, protocol recommendations
+  - SIFO Risk Assessment: Yeast overgrowth risk calculator
+  - Treatment History: Failure pattern analysis, protocol recommendations
+  - Protocol Schedule: 16-week intensive schedule viewer
+  - Maintenance: Post-protocol relapse prevention tracking
+  - Medical Reports: Generate reports for healthcare providers
 - **Research**: Searchable study summaries, agent findings
 - **Meals & Reactions**: Food log, reaction matrix, reintroduction tracker
 - **Vitals & Energy**: Energy/sleep/exercise tracking, correlations
@@ -71,6 +78,21 @@ npm run dev
 ### Briefings
 - `GET /api/briefings` - List briefings
 - `POST /api/briefings` - Create briefing
+
+### SIBO Advanced
+- `GET /api/dieoff/episodes` - List die-off episodes
+- `POST /api/dieoff/episodes` - Log die-off episode
+- `GET /api/dieoff/protocols` - Get die-off protocols
+- `GET /api/sifo/assessment` - List SIFO assessments
+- `POST /api/sifo/assessment` - Submit SIFO risk assessment
+- `GET /api/treatment-history` - List treatment history
+- `POST /api/treatment-history` - Add treatment history
+- `GET /api/treatment-history/analysis` - Analyze failure patterns
+- `GET /api/protocol-schedule/:week` - Get week schedule
+- `GET /api/maintenance/schedule` - Get maintenance phase
+- `POST /api/protocol/complete` - Mark protocol complete
+- `GET /api/reports/medical` - Generate medical report
+- `GET /api/reports/weekly` - Generate weekly report
 
 ### Agent Endpoints
 - `POST /api/agent/protocol-update` - Agent protocol update

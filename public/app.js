@@ -39,6 +39,7 @@ function showTab(tabName) {
   if (tabName === 'symptoms') loadSymptoms();
   if (tabName === 'meals') loadMeals();
   if (tabName === 'vitals') loadVitals();
+  if (tabName === 'sleep') loadSleep();
   if (tabName === 'protocol') renderProtocol();
   if (tabName === 'sibo-advanced') {
     // Initialize first SIBO section
@@ -1042,4 +1043,313 @@ async function generateReport(type) {
 }
 
 // Start
-init();
+init();// Sleep Tracking Functions
+async function loadSleep() {
+  try {
+    // Fetch sleep data
+    const sleepRes = await fetch(`${API_BASE}/api/sleep`);
+    const sleepData = await sleepRes.json();
+    
+    // Fetch vitals for HRV correlation
+    const vitalsRes = await fetch(`${API_BASE}/api/vitals`);
+    const vitalsData = await vitalsRes.json();
+    
+    if (sleepData && sleepData.length > 0) {
+      renderSleepSummary(sleepData);
+      renderLatestSleep(sleepData[sleepData.length - 1]);
+      renderSleepStagesChart(sleepData);
+      renderSleepHRVChart(sleepData, vitalsData);
+      renderSleepHistoryTable(sleepData);
+    } else {
+      document.getElementById('sleep-history-table').innerHTML = `
+        <tr><td colspan="7" class="p-4 text-center text-gray-500">No sleep data yet. Start logging!</td></tr>
+      `;
+    }
+  } catch (error) {
+    console.error('Error loading sleep data:', error);
+    document.getElementById('sleep-history-table').innerHTML = `
+      <tr><td colspan="7" class="p-4 text-center text-red-500">Error loading sleep data</td></tr>
+    `;
+  }
+}
+
+function renderSleepSummary(sleepData) {
+  const latest = sleepData[sleepData.length - 1];
+  const last7Days = sleepData.slice(-7);
+  
+  // Last night total
+  document.getElementById('sleep-last-total').textContent = `${latest.totalHours.toFixed(1)}h`;
+  document.getElementById('sleep-last-date').textContent = new Date(latest.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  
+  // Last night deep sleep
+  const deepMin = latest.deepSleepMinutes || 0;
+  document.getElementById('sleep-last-deep').textContent = `${deepMin} min`;
+  
+  // Color code deep sleep target
+  const deepTarget = document.getElementById('sleep-deep-target');
+  if (deepMin >= 90) {
+    deepTarget.textContent = '✅ Target: 90-120 min';
+    deepTarget.className = 'text-xs text-green-400';
+  } else if (deepMin >= 60) {
+    deepTarget.textContent = '⚠️ Target: 90-120 min';
+    deepTarget.className = 'text-xs text-yellow-400';
+  } else {
+    deepTarget.textContent = '❌ Target: 90-120 min';
+    deepTarget.className = 'text-xs text-red-400';
+  }
+  
+  // Last night quality
+  document.getElementById('sleep-last-quality').textContent = latest.quality || '--';
+  
+  // 7-day average deep sleep
+  const avgDeep = last7Days.reduce((sum, night) => sum + (night.deepSleepMinutes || 0), 0) / last7Days.length;
+  document.getElementById('sleep-avg-deep').textContent = `${Math.round(avgDeep)} min`;
+  
+  // Deep sleep deficit
+  const deficitEl = document.getElementById('sleep-deep-deficit');
+  const deficit = 105 - avgDeep; // 105 is mid-point of 90-120 target
+  if (deficit > 0) {
+    deficitEl.textContent = `${Math.round(deficit)} min below target`;
+    deficitEl.className = 'text-xs text-red-400';
+  } else {
+    deficitEl.textContent = '✅ Meeting target';
+    deficitEl.className = 'text-xs text-green-400';
+  }
+}
+
+function renderLatestSleep(sleep) {
+  // Sleep times
+  document.getElementById('sleep-latest-fell-asleep').textContent = sleep.fellAsleep || '--';
+  document.getElementById('sleep-latest-woke-up').textContent = sleep.wokeUp || '--';
+  document.getElementById('sleep-latest-duration').textContent = `${sleep.totalHours.toFixed(1)} hours`;
+  
+  // Sleep stages
+  const stages = sleep.stages || {};
+  
+  // Awake
+  document.getElementById('sleep-latest-awake-pct').textContent = `${stages.awake || 0}%`;
+  document.getElementById('sleep-latest-awake-bar').style.width = `${stages.awake || 0}%`;
+  document.getElementById('sleep-latest-awake-time').textContent = `${sleep.awakeMinutes || 0} minutes`;
+  
+  // REM
+  document.getElementById('sleep-latest-rem-pct').textContent = `${stages.rem || 0}%`;
+  document.getElementById('sleep-latest-rem-bar').style.width = `${stages.rem || 0}%`;
+  document.getElementById('sleep-latest-rem-time').textContent = `${sleep.remMinutes || 0} minutes`;
+  
+  // Core
+  document.getElementById('sleep-latest-core-pct').textContent = `${stages.core || 0}%`;
+  document.getElementById('sleep-latest-core-bar').style.width = `${stages.core || 0}%`;
+  document.getElementById('sleep-latest-core-time').textContent = `${sleep.coreMinutes || 0} minutes`;
+  
+  // Deep
+  document.getElementById('sleep-latest-deep-pct').textContent = `${stages.deep || 0}%`;
+  document.getElementById('sleep-latest-deep-bar').style.width = `${stages.deep || 0}%`;
+  document.getElementById('sleep-latest-deep-time').textContent = `${sleep.deepSleepMinutes || 0} minutes`;
+  
+  // Notes
+  if (sleep.notes) {
+    document.getElementById('sleep-latest-notes').textContent = sleep.notes;
+    document.getElementById('sleep-latest-notes-container').classList.remove('hidden');
+  } else {
+    document.getElementById('sleep-latest-notes-container').classList.add('hidden');
+  }
+}
+
+function renderSleepStagesChart(sleepData) {
+  const ctx = document.getElementById('sleep-stages-chart');
+  if (!ctx) return;
+  
+  // Destroy existing chart if exists
+  if (charts.sleepStages) {
+    charts.sleepStages.destroy();
+  }
+  
+  const last7Days = sleepData.slice(-7);
+  
+  charts.sleepStages = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: last7Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+      datasets: [
+        {
+          label: 'Deep Sleep (min)',
+          data: last7Days.map(d => d.deepSleepMinutes || 0),
+          backgroundColor: '#8b5cf6',
+          borderColor: '#8b5cf6',
+          borderWidth: 2
+        },
+        {
+          label: 'REM Sleep (min)',
+          data: last7Days.map(d => d.remMinutes || 0),
+          backgroundColor: '#06b6d4',
+          borderColor: '#06b6d4',
+          borderWidth: 2
+        },
+        {
+          label: 'Core Sleep (min)',
+          data: last7Days.map(d => d.coreMinutes || 0),
+          backgroundColor: '#3b82f6',
+          borderColor: '#3b82f6',
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          stacked: true,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Minutes',
+            color: '#9ca3af'
+          }
+        },
+        x: {
+          stacked: true,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#e5e7eb' }
+        },
+        annotation: {
+          annotations: {
+            deepTarget: {
+              type: 'line',
+              yMin: 90,
+              yMax: 90,
+              borderColor: '#10b981',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              label: {
+                content: 'Deep Sleep Target: 90 min',
+                enabled: true,
+                position: 'end',
+                backgroundColor: '#10b981',
+                color: '#ffffff'
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderSleepHRVChart(sleepData, vitalsData) {
+  const ctx = document.getElementById('sleep-hrv-chart');
+  if (!ctx) return;
+  
+  // Destroy existing chart if exists
+  if (charts.sleepHRV) {
+    charts.sleepHRV.destroy();
+  }
+  
+  // Match sleep data with HRV data by date
+  const matchedData = sleepData.slice(-14).map(sleep => {
+    const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
+    const matchingVital = vitalsData.find(v => v.date === sleepDate);
+    return {
+      date: sleepDate,
+      deepSleep: sleep.deepSleepMinutes || 0,
+      hrv: matchingVital ? matchingVital.hrv : null
+    };
+  }).filter(d => d.hrv !== null);
+  
+  if (matchedData.length === 0) {
+    ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
+    return;
+  }
+  
+  charts.sleepHRV = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Deep Sleep vs HRV',
+          data: matchedData.map(d => ({ x: d.deepSleep, y: d.hrv })),
+          backgroundColor: '#8b5cf6',
+          borderColor: '#a78bfa',
+          borderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Deep Sleep (minutes)',
+            color: '#9ca3af'
+          }
+        },
+        y: {
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'HRV (ms)',
+            color: '#9ca3af'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#e5e7eb' }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const dataPoint = matchedData[context.dataIndex];
+              return `${dataPoint.date}: ${context.parsed.x} min deep, ${context.parsed.y} ms HRV`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderSleepHistoryTable(sleepData) {
+  const tbody = document.getElementById('sleep-history-table');
+  
+  const sortedData = [...sleepData].reverse(); // Most recent first
+  
+  tbody.innerHTML = sortedData.map(sleep => {
+    const deepColor = (sleep.deepSleepMinutes || 0) >= 90 ? 'text-green-400' : (sleep.deepSleepMinutes || 0) >= 60 ? 'text-yellow-400' : 'text-red-400';
+    
+    return `
+      <tr class="border-b border-gray-800 hover:bg-gray-800">
+        <td class="p-2">${new Date(sleep.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+        <td class="p-2">${sleep.totalHours.toFixed(1)}h</td>
+        <td class="p-2 ${deepColor} font-medium">${sleep.deepSleepMinutes || 0} min</td>
+        <td class="p-2">${sleep.remMinutes || 0} min</td>
+        <td class="p-2">${sleep.coreMinutes || 0} min</td>
+        <td class="p-2 ${(sleep.awakeMinutes || 0) > 0 ? 'text-red-400' : 'text-gray-400'}">${sleep.awakeMinutes || 0} min</td>
+        <td class="p-2">${sleep.quality || '--'}/10</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Initialize on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
