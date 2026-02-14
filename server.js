@@ -234,14 +234,19 @@ app.get('/api/vitals', async (req, res) => {
   }
 });
 
-// Default route
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', database: 'connected' });
+});
+
+// Diagnostic page
+app.get('/diagnostic', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'diagnostic.html'));
+});
+
+// Default route - serve index.html for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
