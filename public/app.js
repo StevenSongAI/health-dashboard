@@ -608,7 +608,7 @@ async function loadVitals() {
   
   renderEnergyChart(energy);
   renderSleepChart(sleep);
-  renderHRVChart(vitals);
+  renderHRVTrendChart(vitals);
 }
 
 function renderHRVChart(vitals) {
@@ -670,6 +670,134 @@ function renderHRVChart(vitals) {
         x: {
           grid: { display: false },
           ticks: { color: '#9ca3af', maxTicksLimit: 7 }
+        }
+      }
+    }
+  });
+}
+
+// 30-Day HRV Trend Chart with color-coded points
+function renderHRVTrendChart(vitals) {
+  const ctx = document.getElementById('hrv-trend-chart');
+  if (!ctx) return;
+  
+  if (charts.hrvTrend) charts.hrvTrend.destroy();
+  
+  if (!vitals || vitals.length === 0) {
+    // Show "No data" message
+    return;
+  }
+  
+  // Filter for HRV records only, sort by date ascending, get last 30 days
+  const hrvData = vitals
+    .filter(v => v.hrv !== null && v.hrv !== undefined)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-30);
+  
+  if (hrvData.length === 0) {
+    return;
+  }
+  
+  // Format dates as MM-DD
+  const labels = hrvData.map(v => {
+    const date = new Date(v.date);
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  
+  const dataValues = hrvData.map(v => v.hrv);
+  const baseline = 61;
+  
+  // Create color-coded point colors based on HRV value
+  const pointColors = dataValues.map(hrv => {
+    if (hrv < 51) return '#ef4444'; // Red: Critical
+    if (hrv < 61) return '#f59e0b'; // Yellow: Below baseline
+    return '#10b981'; // Green: Normal/optimal
+  });
+  
+  const pointRadii = dataValues.map(() => 5);
+  
+  charts.hrvTrend = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'HRV (ms)',
+        data: dataValues,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: pointRadii,
+        pointHoverRadius: 7
+      }, {
+        label: 'Baseline (61ms)',
+        data: labels.map(() => baseline),
+        borderColor: '#6b7280',
+        borderDash: [5, 5],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { 
+          display: false
+        },
+        tooltip: {
+          backgroundColor: '#1f2937',
+          titleColor: '#e5e7eb',
+          bodyColor: '#e5e7eb',
+          borderColor: '#374151',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              const value = context.parsed.y;
+              let status = '';
+              if (value < 51) status = ' (Critical)';
+              else if (value < 61) status = ' (Below Baseline)';
+              else status = ' (Normal)';
+              return `HRV: ${value}ms${status}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 30,
+          max: 100,
+          grid: { color: '#374151' },
+          ticks: { 
+            color: '#9ca3af',
+            callback: function(value) {
+              return value + ' ms';
+            }
+          },
+          title: {
+            display: true,
+            text: 'HRV (ms)',
+            color: '#6b7280',
+            font: { size: 11 }
+          }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { 
+            color: '#9ca3af',
+            maxTicksLimit: 10
+          },
+          title: {
+            display: true,
+            text: 'Date',
+            color: '#6b7280',
+            font: { size: 11 }
+          }
         }
       }
     }
@@ -1238,6 +1366,8 @@ async function loadSleep() {
     if (sleepData && sleepData.length > 0) {
       renderSleepSummary(sleepData);
       renderLatestSleep(sleepData[sleepData.length - 1]);
+      renderSleepDurationChart(sleepData);
+      renderDeepSleepTrendChart(sleepData, vitalsData);
       renderSleepStagesChart(sleepData);
       renderSleepHRVChart(sleepData, vitalsData);
       renderSleepHistoryTable(sleepData);
@@ -1296,6 +1426,267 @@ function renderSleepSummary(sleepData) {
     deficitEl.textContent = '✅ Meeting target';
     deficitEl.className = 'text-xs text-green-400';
   }
+  
+  // 7-day average quality
+  const avgQuality = last7Days.reduce((sum, night) => sum + (parseInt(night.quality) || 0), 0) / last7Days.length;
+  const avgQualityEl = document.getElementById('sleep-avg-quality');
+  if (!isNaN(avgQuality) && avgQuality > 0) {
+    avgQualityEl.textContent = avgQuality.toFixed(1);
+    // Color code quality
+    if (avgQuality >= 7) avgQualityEl.className = 'text-2xl font-bold text-green-400';
+    else if (avgQuality >= 5) avgQualityEl.className = 'text-2xl font-bold text-yellow-400';
+    else avgQualityEl.className = 'text-2xl font-bold text-red-400';
+  } else {
+    avgQualityEl.textContent = '--';
+  }
+}
+
+// 14-Day Sleep Duration Bar Chart with Quality Color Coding
+function renderSleepDurationChart(sleepData) {
+  const ctx = document.getElementById('sleep-duration-chart');
+  if (!ctx) return;
+  
+  // Destroy existing chart if exists
+  if (charts.sleepDuration) {
+    charts.sleepDuration.destroy();
+  }
+  
+  // Get last 14 days
+  const last14Days = sleepData.slice(-14);
+  
+  // Prepare labels and data
+  const labels = last14Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  const durations = last14Days.map(d => d.totalHours || 0);
+  
+  // Color code bars based on duration: red < 6h, yellow 6-7h, green > 7h
+  const backgroundColors = durations.map(hours => {
+    if (hours < 6) return '#ef4444'; // red
+    if (hours <= 7) return '#f59e0b'; // yellow/amber
+    return '#10b981'; // green
+  });
+  
+  const borderColors = durations.map(hours => {
+    if (hours < 6) return '#dc2626';
+    if (hours <= 7) return '#d97706';
+    return '#059669';
+  });
+  
+  charts.sleepDuration = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Hours Slept',
+        data: durations,
+        backgroundColor: backgroundColors,
+        borderColor: borderColors,
+        borderWidth: 2,
+        borderRadius: 6,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const hours = context.parsed.y;
+              let quality = hours > 7 ? 'Good' : hours >= 6 ? 'Fair' : 'Poor';
+              return `${hours.toFixed(1)} hours (${quality})`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 12,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Hours',
+            color: '#9ca3af'
+          }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { 
+            color: '#9ca3af',
+            maxRotation: 45,
+            minRotation: 45
+          }
+        }
+      }
+    }
+  });
+}
+
+// Deep Sleep Trend Line Chart with HRV Correlation
+function renderDeepSleepTrendChart(sleepData, vitalsData) {
+  const ctx = document.getElementById('deep-sleep-trend-chart');
+  if (!ctx) return;
+  
+  // Destroy existing chart if exists
+  if (charts.deepSleepTrend) {
+    charts.deepSleepTrend.destroy();
+  }
+  
+  // Get last 14 days
+  const last14Days = sleepData.slice(-14);
+  
+  // Prepare labels
+  const labels = last14Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  
+  // Deep sleep data
+  const deepSleepData = last14Days.map(d => d.deepSleepMinutes || 0);
+  
+  // Match with HRV data by date
+  const hrvData = last14Days.map(sleep => {
+    const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
+    const matchingVital = vitalsData?.find(v => v.date === sleepDate);
+    return matchingVital ? matchingVital.hrv : null;
+  });
+  
+  // Calculate correlation coefficient for display
+  const validPairs = deepSleepData.map((deep, i) => ({ deep, hrv: hrvData[i] }))
+    .filter(p => p.hrv !== null && p.deep > 0);
+  
+  let correlationText = '';
+  if (validPairs.length >= 3) {
+    const avgDeep = validPairs.reduce((s, p) => s + p.deep, 0) / validPairs.length;
+    const avgHrv = validPairs.reduce((s, p) => s + p.hrv, 0) / validPairs.length;
+    const numerator = validPairs.reduce((s, p) => s + (p.deep - avgDeep) * (p.hrv - avgHrv), 0);
+    const denomDeep = Math.sqrt(validPairs.reduce((s, p) => s + Math.pow(p.deep - avgDeep, 2), 0));
+    const denomHrv = Math.sqrt(validPairs.reduce((s, p) => s + Math.pow(p.hrv - avgHrv, 2), 0));
+    const correlation = denomDeep > 0 && denomHrv > 0 ? numerator / (denomDeep * denomHrv) : 0;
+    
+    if (Math.abs(correlation) > 0.5) {
+      correlationText = correlation > 0 ? 'Strong positive correlation with HRV' : 'Strong negative correlation with HRV';
+    } else if (Math.abs(correlation) > 0.3) {
+      correlationText = correlation > 0 ? 'Moderate positive correlation with HRV' : 'Moderate negative correlation with HRV';
+    } else {
+      correlationText = 'Weak correlation with HRV';
+    }
+  }
+  
+  charts.deepSleepTrend = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Deep Sleep (min)',
+          data: deepSleepData,
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139, 92, 246, 0.1)',
+          borderWidth: 3,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 5,
+          pointBackgroundColor: '#8b5cf6',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          yAxisID: 'y'
+        },
+        {
+          label: 'HRV (ms)',
+          data: hrvData,
+          borderColor: '#3b82f6',
+          backgroundColor: '#3b82f6',
+          borderWidth: 0,
+          pointRadius: 6,
+          pointStyle: 'circle',
+          showLine: false,
+          yAxisID: 'y1'
+        },
+        {
+          label: 'Optimal Target (90min)',
+          data: labels.map(() => 90),
+          borderColor: '#10b981',
+          borderWidth: 2,
+          borderDash: [8, 4],
+          pointRadius: 0,
+          fill: false,
+          yAxisID: 'y'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          labels: { 
+            color: '#e5e7eb',
+            usePointStyle: true,
+            padding: 20
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => items[0].label,
+            label: (context) => {
+              if (context.dataset.label === 'Deep Sleep (min)') {
+                const val = context.parsed.y;
+                const status = val >= 90 ? '✅ Optimal' : val >= 60 ? '⚠️ Low' : '❌ Very Low';
+                return `Deep Sleep: ${val} min ${status}`;
+              }
+              if (context.dataset.label === 'HRV (ms)') {
+                return context.parsed.y ? `HRV: ${context.parsed.y} ms` : 'HRV: No data';
+              }
+              return `${context.dataset.label}: ${context.parsed.y}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          beginAtZero: true,
+          max: 150,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Deep Sleep (minutes)',
+            color: '#8b5cf6'
+          }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          min: 30,
+          max: 100,
+          grid: { drawOnChartArea: false },
+          ticks: { color: '#3b82f6' },
+          title: {
+            display: true,
+            text: 'HRV (ms)',
+            color: '#3b82f6'
+          }
+        },
+        x: {
+          grid: { color: '#374151' },
+          ticks: { 
+            color: '#9ca3af',
+            maxRotation: 45,
+            minRotation: 45
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderLatestSleep(sleep) {
@@ -1536,3 +1927,329 @@ if (document.readyState === 'loading') {
 }
 // Force redeploy Sat Feb 14 09:28:35 EST 2026
 // Deployed Sat Feb 14 11:25:59 EST 2026
+
+// ============================================
+// STATUS WIDGET - AT A GLANCE
+// ============================================
+
+let statusRefreshInterval = null;
+let lastStatusData = null;
+
+// Initialize status widget
+function initStatusWidget() {
+  // Load initial data
+  loadStatusWidget();
+  
+  // Set up auto-refresh every 5 minutes
+  statusRefreshInterval = setInterval(loadStatusWidget, 5 * 60 * 1000);
+  
+  // Update "last updated" timestamp every minute
+  setInterval(updateLastUpdatedText, 60000);
+}
+
+// Load all status data
+async function loadStatusWidget() {
+  try {
+    const [vitals, sleep, protocol, alerts] = await Promise.all([
+      apiGet('/api/vitals'),
+      apiGet('/api/sleep'),
+      apiGet('/api/protocol'),
+      apiGet('/api/alerts')
+    ]);
+    
+    lastStatusData = { vitals, sleep, protocol, alerts, timestamp: new Date() };
+    
+    updateHRVCard(vitals);
+    updateSleepCard(sleep);
+    updateProtocolCard(protocol);
+    updateAlertsCard(alerts);
+    updateHRVMiniChart(vitals);
+    
+    updateLastUpdatedText();
+  } catch (err) {
+    console.error('Status widget load error:', err);
+  }
+}
+
+// Update HRV Card
+function updateHRVCard(vitals) {
+  const card = document.getElementById('status-hrv-card');
+  const valueEl = document.getElementById('status-hrv-value');
+  const trendEl = document.getElementById('status-hrv-trend');
+  const arrowEl = document.getElementById('status-hrv-arrow');
+  const changeEl = document.getElementById('status-hrv-change');
+  const statusEl = document.getElementById('status-hrv-status');
+  
+  if (!vitals || vitals.length === 0) {
+    valueEl.textContent = '--';
+    statusEl.textContent = 'No data';
+    card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+    return;
+  }
+  
+  // Sort by date descending
+  const sorted = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
+  const latest = sorted.find(v => v.hrv !== null && v.hrv !== undefined);
+  const previous = sorted.find((v, i) => i > 0 && v.hrv !== null && v.hrv !== undefined);
+  
+  if (!latest) {
+    valueEl.textContent = '--';
+    statusEl.textContent = 'No HRV';
+    card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+    return;
+  }
+  
+  const hrv = latest.hrv;
+  valueEl.textContent = Math.round(hrv);
+  
+  // Calculate trend
+  if (previous && previous.hrv) {
+    const change = hrv - previous.hrv;
+    const changePct = ((change / previous.hrv) * 100).toFixed(1);
+    
+    if (change > 5) {
+      arrowEl.textContent = '↑';
+      trendEl.className = 'flex items-center gap-1 mt-2 text-sm trend-up';
+      changeEl.textContent = `+${changePct}%`;
+    } else if (change < -5) {
+      arrowEl.textContent = '↓';
+      trendEl.className = 'flex items-center gap-1 mt-2 text-sm trend-down';
+      changeEl.textContent = `${changePct}%`;
+    } else {
+      arrowEl.textContent = '→';
+      trendEl.className = 'flex items-center gap-1 mt-2 text-sm trend-flat';
+      changeEl.textContent = '0%';
+    }
+  } else {
+    arrowEl.textContent = '→';
+    trendEl.className = 'flex items-center gap-1 mt-2 text-sm trend-flat';
+    changeEl.textContent = 'no prev';
+  }
+  
+  // Determine status (simplified - adjust thresholds as needed)
+  card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+  
+  if (hrv >= 50) {
+    card.classList.add('status-green');
+    statusEl.textContent = 'Good';
+    statusEl.className = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-green-900 text-green-300';
+  } else if (hrv >= 35) {
+    card.classList.add('status-yellow');
+    statusEl.textContent = 'Fair';
+    statusEl.className = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300';
+  } else {
+    card.classList.add('status-red');
+    statusEl.textContent = 'Low';
+    statusEl.className = 'text-xs mt-1 px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+  }
+}
+
+// Update Sleep Card
+function updateSleepCard(sleep) {
+  const card = document.getElementById('status-sleep-card');
+  const durationEl = document.getElementById('status-sleep-duration');
+  const scoreEl = document.getElementById('status-sleep-score');
+  
+  if (!sleep || sleep.length === 0) {
+    durationEl.textContent = '--';
+    scoreEl.textContent = '--';
+    card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+    return;
+  }
+  
+  // Get latest sleep entry
+  const latest = sleep[sleep.length - 1];
+  const hours = latest.totalHours || 0;
+  const quality = latest.quality || 0;
+  const deepMin = latest.deepSleepMinutes || 0;
+  
+  durationEl.textContent = hours.toFixed(1);
+  scoreEl.textContent = quality;
+  
+  // Determine status based on hours and quality
+  card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+  
+  if (hours >= 7 && quality >= 7 && deepMin >= 90) {
+    card.classList.add('status-green');
+  } else if (hours >= 6 && quality >= 5 && deepMin >= 60) {
+    card.classList.add('status-yellow');
+  } else {
+    card.classList.add('status-red');
+  }
+}
+
+// Update Protocol Card
+function updateProtocolCard(protocol) {
+  const card = document.getElementById('status-protocol-card');
+  const dayEl = document.getElementById('status-protocol-day');
+  const progressEl = document.getElementById('status-protocol-progress');
+  
+  if (!protocol) {
+    dayEl.textContent = '--';
+    progressEl.textContent = '-- of --';
+    card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+    return;
+  }
+  
+  // Calculate current day
+  const startDate = new Date(protocol.startDate);
+  const today = new Date();
+  const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const currentDay = Math.max(1, dayDiff);
+  const totalDays = protocol.totalDays || 37; // Default to extended protocol
+  
+  dayEl.textContent = currentDay;
+  progressEl.textContent = `Day ${currentDay} of ${totalDays}`;
+  
+  // Determine status based on progress
+  card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+  
+  const progress = currentDay / totalDays;
+  if (progress >= 0.75) {
+    card.classList.add('status-green');
+  } else if (progress >= 0.25) {
+    card.classList.add('status-blue');
+  } else {
+    card.classList.add('status-yellow');
+  }
+}
+
+// Update Alerts Card
+function updateAlertsCard(alerts) {
+  const card = document.getElementById('status-alerts-card');
+  const countEl = document.getElementById('status-alerts-count');
+  const textEl = document.getElementById('status-alerts-text');
+  const badgeEl = document.getElementById('status-alerts-badge');
+  
+  // Filter active (non-dismissed) alerts
+  const activeAlerts = alerts ? alerts.filter(a => !a.dismissed) : [];
+  const highPriority = activeAlerts.filter(a => a.priority === 'high');
+  
+  countEl.textContent = activeAlerts.length;
+  
+  card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+  
+  if (activeAlerts.length === 0) {
+    card.classList.add('status-green');
+    countEl.className = 'text-4xl font-bold text-accent-green';
+    textEl.textContent = 'All clear';
+    badgeEl.classList.add('hidden');
+  } else if (highPriority.length > 0) {
+    card.classList.add('status-red');
+    countEl.className = 'text-4xl font-bold text-accent-red';
+    textEl.textContent = activeAlerts.length === 1 ? '1 alert' : `${activeAlerts.length} alerts`;
+    badgeEl.classList.remove('hidden');
+    badgeEl.textContent = 'ACTION';
+  } else {
+    card.classList.add('status-yellow');
+    countEl.className = 'text-4xl font-bold text-accent-yellow';
+    textEl.textContent = activeAlerts.length === 1 ? '1 alert' : `${activeAlerts.length} alerts`;
+    badgeEl.classList.remove('hidden');
+    badgeEl.textContent = 'CHECK';
+    badgeEl.className = 'mt-2 px-2 py-0.5 rounded-full bg-accent-yellow text-black text-xs';
+  }
+}
+
+// Update HRV Mini Chart
+function updateHRVMiniChart(vitals) {
+  const container = document.getElementById('hrv-mini-chart');
+  const statusEl = document.getElementById('hrv-trend-mini-status');
+  
+  if (!vitals || vitals.length === 0) {
+    container.innerHTML = Array(7).fill('<div class="flex-1 bg-gray-700 rounded-t" style="height: 30%"></div>').join('');
+    statusEl.textContent = '--';
+    return;
+  }
+  
+  // Get last 7 days of HRV data
+  const sorted = vitals
+    .filter(v => v.hrv !== null && v.hrv !== undefined)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-7);
+  
+  if (sorted.length === 0) {
+    container.innerHTML = Array(7).fill('<div class="flex-1 bg-gray-700 rounded-t" style="height: 30%"></div>').join('');
+    statusEl.textContent = 'No data';
+    return;
+  }
+  
+  // Calculate min/max for scaling
+  const values = sorted.map(v => v.hrv);
+  const min = Math.min(...values) * 0.9;
+  const max = Math.max(...values) * 1.1;
+  const range = max - min || 1;
+  
+  // Generate bars
+  const bars = sorted.map((vital, i) => {
+    const height = ((vital.hrv - min) / range) * 100;
+    const isLatest = i === sorted.length - 1;
+    const color = isLatest ? 'bg-primary-500' : 'bg-gray-600';
+    return `<div class="flex-1 ${color} rounded-t transition-all duration-500" style="height: ${Math.max(10, height)}%"></div>`;
+  });
+  
+  // Pad to 7 if needed
+  while (bars.length < 7) {
+    bars.unshift('<div class="flex-1 bg-gray-800 rounded-t" style="height: 10%"></div>');
+  }
+  
+  container.innerHTML = bars.join('');
+  
+  // Update trend status
+  if (sorted.length >= 2) {
+    const first = sorted[0].hrv;
+    const last = sorted[sorted.length - 1].hrv;
+    const change = last - first;
+    
+    if (change > 5) {
+      statusEl.textContent = '↑ Improving';
+      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-300';
+    } else if (change < -5) {
+      statusEl.textContent = '↓ Declining';
+      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+    } else {
+      statusEl.textContent = '→ Stable';
+      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-gray-700';
+    }
+  } else {
+    statusEl.textContent = '--';
+  }
+}
+
+// Update "last updated" text
+function updateLastUpdatedText() {
+  const el = document.getElementById('last-updated');
+  if (!lastStatusData || !lastStatusData.timestamp) {
+    el.textContent = 'Never';
+    return;
+  }
+  
+  const diff = Math.floor((new Date() - lastStatusData.timestamp) / 60000);
+  
+  if (diff < 1) {
+    el.textContent = 'Just now';
+  } else if (diff < 60) {
+    el.textContent = `${diff}m ago`;
+  } else {
+    const hours = Math.floor(diff / 60);
+    el.textContent = `${hours}h ago`;
+  }
+}
+
+// Refresh status on demand
+function refreshStatus() {
+  loadStatusWidget();
+}
+
+// Clean up interval on page unload
+window.addEventListener('beforeunload', () => {
+  if (statusRefreshInterval) {
+    clearInterval(statusRefreshInterval);
+  }
+});
+
+// Modify init to include status widget
+const originalInit = init;
+init = function() {
+  originalInit();
+  initStatusWidget();
+};

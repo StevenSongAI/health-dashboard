@@ -49,6 +49,38 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     .supplement-card { transition: transform 0.2s; }
     .supplement-card:hover { transform: translateY(-2px); }
+    
+    /* Status Widget Styles */
+    .status-card {
+      position: relative;
+      overflow: hidden;
+    }
+    .status-card.status-green { 
+      border-color: #10b981 !important; 
+      background: linear-gradient(135deg, #1f2937 0%, rgba(16, 185, 129, 0.1) 100%);
+    }
+    .status-card.status-yellow { 
+      border-color: #f59e0b !important; 
+      background: linear-gradient(135deg, #1f2937 0%, rgba(245, 158, 11, 0.1) 100%);
+    }
+    .status-card.status-red { 
+      border-color: #ef4444 !important; 
+      background: linear-gradient(135deg, #1f2937 0%, rgba(239, 68, 68, 0.1) 100%);
+    }
+    .status-card.status-blue { 
+      border-color: #3b82f6 !important; 
+      background: linear-gradient(135deg, #1f2937 0%, rgba(59, 130, 246, 0.1) 100%);
+    }
+    #status-hrv-card.status-green #status-hrv-value { color: #10b981; }
+    #status-hrv-card.status-yellow #status-hrv-value { color: #f59e0b; }
+    #status-hrv-card.status-red #status-hrv-value { color: #ef4444; }
+    #status-sleep-card.status-green #status-sleep-duration { color: #10b981; }
+    #status-sleep-card.status-yellow #status-sleep-duration { color: #f59e0b; }
+    #status-sleep-card.status-red #status-sleep-duration { color: #ef4444; }
+    .trend-up { color: #10b981; }
+    .trend-down { color: #ef4444; }
+    .trend-flat { color: #6b7280; }
+    
     @media (max-width: 640px) {
       .mobile-full { width: 100%; }
       .mobile-stack { flex-direction: column; }
@@ -65,7 +97,10 @@
         <p class="text-xs text-gray-400 mt-1" id="current-date"></p>
       </div>
       <div class="flex md:flex-col overflow-x-auto md:overflow-visible">
-        <button onclick="showTab('overview')" id="nav-overview" class="nav-item active flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+        <button onclick="showTab('status')" id="nav-status" class="nav-item active flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>📱</span> Status
+        </button>
+        <button onclick="showTab('overview')" id="nav-overview" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
           <span>🏠</span> Overview
         </button>
         <button onclick="showTab('protocol')" id="nav-protocol" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
@@ -110,8 +145,119 @@
         </button>
       </div>
 
+      <!-- TAB: STATUS (AT A GLANCE) -->
+      <div id="tab-status" class="tab-content active">
+        <div class="max-w-md mx-auto">
+          <!-- Header -->
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-bold text-gray-300">Health Status</h2>
+            <span id="last-updated" class="text-xs text-gray-500">Just now</span>
+          </div>
+          
+          <!-- Status Cards Grid - 2x2 Layout -->
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            
+            <!-- HRV Card -->
+            <div id="status-hrv-card" class="status-card card p-4 flex flex-col items-center justify-center min-h-[140px] border-2 transition-all duration-300">
+              <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">HRV</div>
+              <div class="flex items-baseline gap-1">
+                <span id="status-hrv-value" class="text-4xl font-bold">--</span>
+                <span id="status-hrv-unit" class="text-sm text-gray-400">ms</span>
+              </div>
+              <div id="status-hrv-trend" class="flex items-center gap-1 mt-2 text-sm">
+                <span id="status-hrv-arrow">→</span>
+                <span id="status-hrv-change">--</span>
+              </div>
+              <div id="status-hrv-status" class="text-xs mt-1 px-2 py-0.5 rounded-full bg-gray-700">Loading...</div>
+            </div>
+            
+            <!-- Sleep Card -->
+            <div id="status-sleep-card" class="status-card card p-4 flex flex-col items-center justify-center min-h-[140px] border-2 transition-all duration-300">
+              <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Sleep</div>
+              <div class="flex items-baseline gap-1">
+                <span id="status-sleep-duration" class="text-3xl font-bold">--</span>
+                <span id="status-sleep-unit" class="text-sm text-gray-400">h</span>
+              </div>
+              <div id="status-sleep-quality" class="flex items-center gap-1 mt-2">
+                <span class="text-lg">⭐</span>
+                <span id="status-sleep-score" class="text-xl font-semibold">--</span>
+                <span class="text-xs text-gray-400">/10</span>
+              </div>
+              <div id="status-sleep-label" class="text-xs mt-1 text-gray-400">Last night</div>
+            </div>
+            
+            <!-- Protocol Card -->
+            <div id="status-protocol-card" class="status-card card p-4 flex flex-col items-center justify-center min-h-[140px] border-2 transition-all duration-300">
+              <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Protocol</div>
+              <div class="flex items-baseline gap-1">
+                <span id="status-protocol-day" class="text-4xl font-bold text-primary-500">--</span>
+              </div>
+              <div class="text-sm text-gray-400 mt-1">Day</div>
+              <div id="status-protocol-progress" class="text-xs mt-2 px-2 py-0.5 rounded-full bg-gray-700">-- of --</div>
+            </div>
+            
+            <!-- Alerts Card -->
+            <div id="status-alerts-card" class="status-card card p-4 flex flex-col items-center justify-center min-h-[140px] border-2 transition-all duration-300">
+              <div class="text-xs text-gray-400 uppercase tracking-wider mb-1">Alerts</div>
+              <div id="status-alerts-count" class="text-4xl font-bold text-accent-green">0</div>
+              <div id="status-alerts-text" class="text-sm text-gray-400 mt-1">All clear</div>
+              <div id="status-alerts-badge" class="hidden mt-2 px-2 py-0.5 rounded-full bg-accent-red text-white text-xs animate-pulse">ACTION</div>
+            </div>
+            
+          </div>
+          
+          <!-- Quick Actions Row -->
+          <div class="grid grid-cols-4 gap-2 mb-4">
+            <button onclick="showQuickLog(); quickLogType('supplement')" class="card p-3 flex flex-col items-center justify-center hover:bg-gray-800 transition-colors">
+              <span class="text-xl">💊</span>
+              <span class="text-xs text-gray-400 mt-1">Supp</span>
+            </button>
+            <button onclick="showQuickLog(); quickLogType('symptom')" class="card p-3 flex flex-col items-center justify-center hover:bg-gray-800 transition-colors">
+              <span class="text-xl">😣</span>
+              <span class="text-xs text-gray-400 mt-1">Symptom</span>
+            </button>
+            <button onclick="showQuickLog(); quickLogType('meal')" class="card p-3 flex flex-col items-center justify-center hover:bg-gray-800 transition-colors">
+              <span class="text-xl">🍖</span>
+              <span class="text-xs text-gray-400 mt-1">Meal</span>
+            </button>
+            <button onclick="showQuickLog(); quickLogType('energy')" class="card p-3 flex flex-col items-center justify-center hover:bg-gray-800 transition-colors">
+              <span class="text-xl">⚡</span>
+              <span class="text-xs text-gray-400 mt-1">Energy</span>
+            </button>
+          </div>
+          
+          <!-- Mini Trend Chart -->
+          <div class="card p-4">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm text-gray-400">7-Day HRV Trend</span>
+              <span id="hrv-trend-mini-status" class="text-xs px-2 py-0.5 rounded-full bg-gray-700">--</span>
+            </div>
+            <div class="h-16 flex items-end justify-between gap-1" id="hrv-mini-chart">
+              <!-- Bars populated by JS -->
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+              <div class="flex-1 bg-gray-700 rounded-t"></div>
+            </div>
+            <div class="flex justify-between mt-2 text-xs text-gray-500">
+              <span>-6d</span>
+              <span>-5d</span>
+              <span>-4d</span>
+              <span>-3d</span>
+              <span>-2d</span>
+              <span>Yesterday</span>
+              <span>Today</span>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+
       <!-- TAB 1: OVERVIEW -->
-      <div id="tab-overview" class="tab-content active">
+      <div id="tab-overview" class="tab-content">
         <h2 class="text-2xl font-bold mb-6">Dashboard Overview</h2>
         
         <!-- Status Cards -->
@@ -353,6 +499,29 @@
           </div>
         </div>
 
+        <!-- HRV Trend Chart -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">💓 30-Day HRV Trend</h3>
+          <div class="flex items-center gap-4 mb-4 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span class="text-gray-400">&lt;51ms (Critical)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+              <span class="text-gray-400">51-60ms (Below Baseline)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-green-500"></span>
+              <span class="text-gray-400">≥61ms (Normal)</span>
+            </div>
+            <div class="flex items-center gap-2 ml-auto">
+              <span class="text-gray-500">Baseline: 61ms</span>
+            </div>
+          </div>
+          <canvas id="hrv-trend-chart" height="120"></canvas>
+        </div>
+
         <!-- Correlations -->
         <div class="card p-6">
           <h3 class="text-lg font-semibold mb-4">Health Correlations</h3>
@@ -381,7 +550,7 @@
         <h2 class="text-2xl font-bold mb-6">😴 Sleep Analysis</h2>
         
         <!-- Sleep Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div class="card p-4">
             <p class="text-sm text-gray-400 mb-1">Last Night</p>
             <p class="text-2xl font-bold" id="sleep-last-total">--</p>
@@ -402,6 +571,35 @@
             <p class="text-2xl font-bold" id="sleep-avg-deep">--</p>
             <p class="text-xs" id="sleep-deep-deficit">--</p>
           </div>
+          <div class="card p-4 border-2 border-primary-500">
+            <p class="text-sm text-gray-400 mb-1">7-Day Avg Quality</p>
+            <p class="text-2xl font-bold text-primary-400" id="sleep-avg-quality">--</p>
+            <p class="text-xs text-gray-500">/ 10</p>
+          </div>
+        </div>
+
+        <!-- 14-Day Sleep Duration Chart -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">📊 14-Day Sleep Duration</h3>
+          <div style="height: 250px;">
+            <canvas id="sleep-duration-chart"></canvas>
+          </div>
+          <div class="flex justify-center gap-6 mt-4 text-xs">
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded" style="background: #ef4444;"></span> &lt; 6 hours</span>
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded" style="background: #f59e0b;"></span> 6-7 hours</span>
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded" style="background: #10b981;"></span> &gt; 7 hours</span>
+          </div>
+        </div>
+
+        <!-- Deep Sleep Trend with HRV -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">📈 Deep Sleep Trend (14 Days)</h3>
+          <div style="height: 280px;">
+            <canvas id="deep-sleep-trend-chart"></canvas>
+          </div>
+          <p class="text-xs text-gray-400 mt-3 text-center">
+            Purple line = Deep Sleep minutes • Dotted green line = 90min target (optimal for gut repair) • Blue dots = HRV correlation
+          </p>
         </div>
 
         <!-- Latest Sleep Detailed Breakdown -->
