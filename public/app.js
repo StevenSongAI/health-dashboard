@@ -176,13 +176,16 @@ async function loadOverview() {
   }
 }
 
-// Load HRV Status for Overview
+// Load HRV Status for Overview - UPDATED FOR APPLE HEALTH
 async function loadHRVStatus() {
+  console.log('Loading HRV status from /api/vitals...');
   try {
     // Fetch from /api/vitals where Apple Health data is stored
     const vitals = await apiGet('/api/vitals');
+    console.log('Vitals data:', vitals?.length, 'records');
     
     if (!vitals || vitals.length === 0) {
+      console.log('No vitals data found');
       document.getElementById('hrv-current').textContent = '--';
       document.getElementById('hrv-status').textContent = 'No data';
       document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
@@ -193,7 +196,10 @@ async function loadHRVStatus() {
     const sortedVitals = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
     const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined);
     
+    console.log('Latest vital:', latestVital);
+    
     if (!latestVital) {
+      console.log('No HRV data found in vitals');
       document.getElementById('hrv-current').textContent = '--';
       document.getElementById('hrv-status').textContent = 'No data';
       document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
@@ -204,6 +210,8 @@ async function loadHRVStatus() {
     const baseline = 61; // Your baseline HRV
     const diff = hrv - baseline;
     const diffPercent = ((diff / baseline) * 100).toFixed(0);
+    
+    console.log(`HRV: ${hrv}ms, Baseline: ${baseline}ms, Diff: ${diff}ms`);
     
     // Update HRV display
     document.getElementById('hrv-current').textContent = `${hrv}ms`;
