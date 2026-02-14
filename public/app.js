@@ -132,6 +132,173 @@ async function loadProtocol() {
   protocolData = await apiGet('/api/protocol');
 }
 
+// Alert System - Check health trends and generate alerts
+async function checkAlerts() {
+  const alerts = [];
+  
+  // Fetch vitals and sleep data for trend analysis
+  const [vitals, sleep, dailyLogs] = await Promise.all([
+    apiGet('/api/vitals'),
+    apiGet('/api/sleep'),
+    apiGet('/api/daily-logs')
+  ]);
+  
+  // ========== HRV ALERTS ==========
+  if (vitals && vitals.length > 0) {
+    // Sort by date descending
+    const sortedVitals = vitals
+      .filter(v => v.hrv !== null && v.hrv !== undefined)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    if (sortedVitals.length >= 2) {
+      // Check for CRITICAL: HRV < 51ms for 2+ consecutive days
+      let criticalStreak = 0;
+      for (const vital of sortedVitals) {
+        if (vital.hrv < 51) {
+          criticalStreak++;
+        } else {
+          break;
+        }
+      }
+      
+      if (criticalStreak >= 2) {
+        alerts.push({
+          priority: 'high',
+          message: `CRITICAL: HRV below 51ms for ${criticalStreak} consecutive days`,
+          recommendation: 'Reduce Allimax to 1-cap. Prioritize sleep. No training until HRV recovers.',
+          type: 'hrv',
+          icon: '🔴'
+        });
+      }
+      // Check for WARNING: HRV < 61ms for 3+ consecutive days
+      else {
+        let warningStreak = 0;
+        for (const vital of sortedVitals) {
+          if (vital.hrv < 61) {
+            warningStreak++;
+          } else {
+            break;
+          }
+        }
+        
+        if (warningStreak >= 3) {
+          alerts.push({
+            priority: 'medium',
+            message: `WARNING: HRV below baseline for ${warningStreak} consecutive days`,
+            recommendation: 'Consider reducing Allimax dose. Focus on recovery and stress management.',
+            type: 'hrv',
+            icon: '🟡'
+          });
+        }
+      }
+      
+      // Check for OPTIMAL: HRV > 80ms sustained
+      const recentHighHRV = sortedVitals.slice(0, 3).filter(v => v.hrv > 80).length;
+      if (recentHighHRV >= 3) {
+        alerts.push({
+          priority: 'low',
+          message: 'OPTIMAL: HRV consistently above 80ms',
+          recommendation: 'Excellent recovery capacity. Protocol is working well.',
+          type: 'hrv',
+          icon: '🟢'
+        });
+      }
+    }
+  }
+  
+  // ========== SLEEP ALERTS ==========
+  if (sleep && sleep.length > 0) {
+    // Sort by date descending
+    const sortedSleep = sleep
+      .filter(s => s.date)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    if (sortedSleep.length >= 3) {
+      // Check for CRITICAL: Deep sleep < 30min for 3+ nights
+      const lowDeepSleepNights = sortedSleep.filter(s => (s.deepSleepMinutes || 0) < 30);
+      if (lowDeepSleepNights.length >= 3) {
+        alerts.push({
+          priority: 'high',
+          message: `CRITICAL: Deep sleep below 30min for ${lowDeepSleepNights.length} nights`,
+          recommendation: 'Reduce antimicrobials temporarily. Prioritize sleep hygiene. Consider magnesium before bed.',
+          type: 'sleep',
+          icon: '🔴'
+        });
+      }
+      
+      // Check for WARNING: Sleep quality < 5 for 3+ nights
+      const poorQualityNights = sortedSleep.filter(s => {
+        const quality = parseInt(s.quality) || 0;
+        return quality > 0 && quality < 5;
+      });
+      if (poorQualityNights.length >= 3) {
+        alerts.push({
+          priority: 'medium',
+          message: `WARNING: Poor sleep quality for ${poorQualityNights.length} nights`,
+          recommendation: 'Review sleep environment. Consider reducing evening stress. Check for die-off symptoms.',
+          type: 'sleep',
+          icon: '🟡'
+        });
+      }
+      
+      // Check for WARNING: Total sleep < 5hrs for 3+ nights
+      const shortSleepNights = sortedSleep.filter(s => (s.totalHours || s.hours || 0) < 5);
+      if (shortSleepNights.length >= 3) {
+        alerts.push({
+          priority: 'medium',
+          message: `WARNING: Less than 5 hours sleep for ${shortSleepNights.length} nights`,
+          recommendation: 'Sleep debt accumulating. Prioritize 7-8 hours tonight. Avoid caffeine after 2pm.',
+          type: 'sleep',
+          icon: '🟡'
+        });
+      }
+    }
+  }
+  
+  // ========== PROTOCOL ALERTS ==========
+  
+  // Morning supplements reminder (if not logged by 10am)
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  if (currentHour >= 10 && currentHour < 14) {
+    // Check if supplements were logged this morning
+    const today = now.toISOString().split('T')[0];
+    const hasLoggedSupplements = dailyLogs && dailyLogs.some(log => {
+      const logDate = log.date || (log.createdAt && log.createdAt.split('T')[0]);
+      return logDate === today && (log.type === 'supplement' || log.notes?.toLowerCase().includes('supplement'));
+    });
+    
+    if (!hasLoggedSupplements) {
+      alerts.push({
+        priority: 'low',
+        message: 'Morning supplements not yet logged',
+        recommendation: 'Take Allimax (2 caps), Biofilm Defense (2 caps), and S. Boulardii before breakfast.',
+        type: 'protocol',
+        icon: '💊'
+      });
+    }
+  }
+  
+  // Kill phase ending soon (within 7 days)
+  if (protocolData && protocolData.phase) {
+    const phase = protocolData.phase;
+    const daysRemaining = phase.daysRemaining || phase.daysLeft;
+    
+    if (daysRemaining !== undefined && daysRemaining > 0 && daysRemaining <= 7) {
+      alerts.push({
+        priority: 'medium',
+        message: `Kill phase ending in ${daysRemaining} days`,
+        recommendation: 'Prepare for transition to maintenance phase. Ensure die-off symptoms are resolved.',
+        type: 'protocol',
+        icon: '⏰'
+      });
+    }
+  }
+  
+  return alerts;
+}
+
 // Load Overview
 async function loadOverview() {
   const data = await apiGet('/api/overview');
@@ -1926,7 +2093,7 @@ if (document.readyState === 'loading') {
   init();
 }
 // Force redeploy Sat Feb 14 09:28:35 EST 2026
-// Deployed Sat Feb 14 11:25:59 EST 2026
+// Deployed Sat Feb 14 13:25 EST 2026 - Status Widget Added
 
 // ============================================
 // STATUS WIDGET - AT A GLANCE
