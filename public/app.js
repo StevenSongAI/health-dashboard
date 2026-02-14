@@ -2804,7 +2804,13 @@ function renderHRVTrendChart(vitals) {
         maintainAspectRatio: false,
         plugins: {
           legend: { 
-            display: false
+            display: true,
+            position: 'top',
+            labels: {
+              color: '#9ca3af',
+              usePointStyle: true,
+              padding: 10
+            }
           },
           tooltip: {
             backgroundColor: '#1f2937',
@@ -2846,7 +2852,21 @@ function renderHRVTrendChart(vitals) {
             grid: { display: false },
             ticks: { 
               color: '#9ca3af',
-              maxTicksLimit: 10
+              maxTicksLimit: 10,
+              autoSkip: true
+            }
+          }
+        },
+        layout: {
+          padding: {
+            top: 10,
+            right: 10,
+            bottom: 10,
+            left: 10
+          }
+        }
+      }
+    });
             },
             title: {
               display: true,

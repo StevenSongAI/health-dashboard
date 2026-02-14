@@ -683,7 +683,7 @@
         <!-- HRV Trend Chart -->
         <div class="card p-6 mb-6">
           <h3 class="text-lg font-semibold mb-4">💓 30-Day HRV Trend</h3>
-          <div class="flex items-center gap-4 mb-4 text-sm">
+          <div class="flex items-center gap-4 mb-4 text-sm flex-wrap">
             <div class="flex items-center gap-2">
               <span class="w-3 h-3 rounded-full bg-red-500"></span>
               <span class="text-gray-400">&lt;51ms (Critical)</span>
@@ -700,7 +700,9 @@
               <span class="text-gray-500">Baseline: 61ms</span>
             </div>
           </div>
-          <canvas id="hrv-trend-chart" height="120"></canvas>
+          <div style="height: 250px; position: relative;">
+            <canvas id="hrv-trend-chart"></canvas>
+          </div>
         </div>
 
         <!-- Correlations -->
