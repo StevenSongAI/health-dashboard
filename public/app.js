@@ -2027,10 +2027,16 @@ function renderDeepSleepTrendChart(sleepData, vitalsData) {
 }
 
 function renderLatestSleep(sleep) {
-  // Sleep times
-  document.getElementById('sleep-latest-fell-asleep').textContent = sleep.fellAsleep || '--';
-  document.getElementById('sleep-latest-woke-up').textContent = sleep.wokeUp || '--';
-  document.getElementById('sleep-latest-duration').textContent = `${sleep.totalHours.toFixed(1)} hours`;
+  if (!sleep) {
+    console.log('No latest sleep data available');
+    return;
+  }
+  
+  // Sleep times - handle different field names
+  const totalHours = sleep.totalHours || sleep.durationHours || sleep.duration || 0;
+  document.getElementById('sleep-latest-fell-asleep').textContent = sleep.fellAsleep || sleep.bedtime || '--';
+  document.getElementById('sleep-latest-woke-up').textContent = sleep.wokeUp || sleep.waketime || '--';
+  document.getElementById('sleep-latest-duration').textContent = `${Number(totalHours).toFixed(1)} hours`;
   
   // Sleep stages
   const stages = sleep.stages || {};
