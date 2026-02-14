@@ -2628,6 +2628,7 @@ let lastStatusData = null;
 
 // Initialize status widget
 function initStatusWidget() {
+  console.log('DEBUG: initStatusWidget() called');
   // Load initial data
   loadStatusWidget();
   
@@ -2640,7 +2641,9 @@ function initStatusWidget() {
 
 // Load all status data
 async function loadStatusWidget() {
+  console.log('=== DEBUG: loadStatusWidget() START ===');
   try {
+    console.log('DEBUG: Fetching vitals, sleep, protocol, alerts...');
     const [vitals, sleep, protocol, alerts] = await Promise.all([
       apiGet('/api/vitals'),
       apiGet('/api/sleep'),
@@ -2648,22 +2651,35 @@ async function loadStatusWidget() {
       apiGet('/api/alerts')
     ]);
     
+    console.log('DEBUG: Vitals data:', vitals?.length, 'records', vitals ? 'Type: ' + typeof vitals : 'null');
+    console.log('DEBUG: Sleep data:', sleep?.length, 'records');
+    console.log('DEBUG: Protocol data:', protocol ? 'present' : 'null');
+    console.log('DEBUG: Alerts data:', alerts?.length, 'records');
+    
     lastStatusData = { vitals, sleep, protocol, alerts, timestamp: new Date() };
     
-    updateHRVCard(vitals);
-    updateSleepCard(sleep);
+    // Ensure vitals is an array before passing to update functions
+    const vitalsArray = Array.isArray(vitals) ? vitals : [];
+    const sleepArray = Array.isArray(sleep) ? sleep : [];
+    
+    updateHRVCard(vitalsArray);
+    updateSleepCard(sleepArray);
     updateProtocolCard(protocol);
     updateAlertsCard(alerts);
-    updateHRVMiniChart(vitals);
+    updateHRVMiniChart(vitalsArray);
     
     updateLastUpdatedText();
+    console.log('=== DEBUG: loadStatusWidget() END ===');
   } catch (err) {
     console.error('Status widget load error:', err);
+    console.error('Status widget load stack:', err.stack);
   }
 }
 
 // Update HRV Card
 function updateHRVCard(vitals) {
+  console.log('DEBUG: updateHRVCard() called with', vitals?.length, 'records');
+  
   const card = document.getElementById('status-hrv-card');
   const valueEl = document.getElementById('status-hrv-value');
   const trendEl = document.getElementById('status-hrv-trend');
@@ -2671,9 +2687,13 @@ function updateHRVCard(vitals) {
   const changeEl = document.getElementById('status-hrv-change');
   const statusEl = document.getElementById('status-hrv-status');
   
-  if (!card || !valueEl) return;
+  if (!card || !valueEl) {
+    console.log('DEBUG: updateHRVCard() - Missing DOM elements');
+    return;
+  }
   
   if (!vitals || vitals.length === 0) {
+    console.log('DEBUG: updateHRVCard() - No vitals data');
     valueEl.textContent = '--';
     if (statusEl) statusEl.textContent = 'No data';
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
@@ -2686,12 +2706,17 @@ function updateHRVCard(vitals) {
     hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null
   }));
   
+  console.log('DEBUG: updateHRVCard() - Parsed vitals sample:', parsedVitals.slice(0, 2));
+  
   // Sort by date descending
   const sorted = parsedVitals.sort((a, b) => new Date(b.date) - new Date(a.date));
   const latest = sorted.find(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
   const previous = sorted.find((v, i) => i > 0 && v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
   
+  console.log('DEBUG: updateHRVCard() - Latest HRV:', latest?.hrv, 'Previous HRV:', previous?.hrv);
+  
   if (!latest) {
+    console.log('DEBUG: updateHRVCard() - No valid HRV found');
     valueEl.textContent = '--';
     if (statusEl) statusEl.textContent = 'No HRV';
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
@@ -2700,6 +2725,7 @@ function updateHRVCard(vitals) {
   
   const hrv = latest.hrv;
   valueEl.textContent = Math.round(hrv);
+  console.log('DEBUG: updateHRVCard() - Displaying HRV:', Math.round(hrv));
   
   // Calculate trend
   if (previous && previous.hrv) {
@@ -2745,13 +2771,19 @@ function updateHRVCard(vitals) {
 
 // Update Sleep Card
 function updateSleepCard(sleep) {
+  console.log('DEBUG: updateSleepCard() called with', sleep?.length, 'records');
+  
   const card = document.getElementById('status-sleep-card');
   const durationEl = document.getElementById('status-sleep-duration');
   const scoreEl = document.getElementById('status-sleep-score');
   
-  if (!card || !durationEl || !scoreEl) return;
+  if (!card || !durationEl || !scoreEl) {
+    console.log('DEBUG: updateSleepCard() - Missing DOM elements');
+    return;
+  }
   
   if (!sleep || sleep.length === 0) {
+    console.log('DEBUG: updateSleepCard() - No sleep data');
     durationEl.textContent = '--';
     scoreEl.textContent = '--';
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
@@ -2760,6 +2792,8 @@ function updateSleepCard(sleep) {
   
   // Get latest sleep entry - map API field names
   const latest = sleep[sleep.length - 1];
+  console.log('DEBUG: updateSleepCard() - Latest sleep:', latest);
+  
   const hours = latest.totalHours !== undefined ? latest.totalHours : 
                 latest.durationHours !== undefined ? latest.durationHours : 
                 latest.sleep_hours !== undefined ? parseFloat(latest.sleep_hours) :
@@ -2771,6 +2805,8 @@ function updateSleepCard(sleep) {
   
   durationEl.textContent = hours ? hours.toFixed(1) : '--';
   scoreEl.textContent = quality || '--';
+  
+  console.log('DEBUG: updateSleepCard() - Displaying hours:', hours?.toFixed(1), 'quality:', quality);
   
   // Determine status based on hours and quality
   card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
