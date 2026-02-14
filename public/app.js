@@ -137,17 +137,36 @@ async function checkAlerts() {
   const alerts = [];
   
   // Fetch vitals and sleep data for trend analysis
-  const [vitals, sleep, dailyLogs] = await Promise.all([
+  let [vitals, sleep, dailyLogs] = await Promise.all([
     apiGet('/api/vitals'),
     apiGet('/api/sleep'),
     apiGet('/api/daily-logs')
   ]);
   
+  // Parse vitals string values to numbers (API returns strings like "44.35")
+  if (vitals && Array.isArray(vitals)) {
+    vitals = vitals.map(v => ({
+      ...v,
+      hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+      rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null
+    }));
+  }
+  
+  // Map sleep API field names to frontend expected names
+  if (sleep && Array.isArray(sleep)) {
+    sleep = sleep.map(s => ({
+      ...s,
+      totalHours: s.totalHours !== undefined ? s.totalHours : s.durationHours !== undefined ? s.durationHours : s.duration || 0,
+      deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : s.deepSleepMin !== undefined ? s.deepSleepMin : 0,
+      date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : null)
+    }));
+  }
+  
   // ========== HRV ALERTS ==========
   if (vitals && vitals.length > 0) {
     // Sort by date descending
     const sortedVitals = vitals
-      .filter(v => v.hrv !== null && v.hrv !== undefined)
+      .filter(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
     
     if (sortedVitals.length >= 2) {
@@ -391,8 +410,17 @@ async function loadHRVStatus() {
   console.log('Loading HRV status from /api/vitals...');
   try {
     // Fetch from /api/vitals where Apple Health data is stored
-    const vitals = await apiGet('/api/vitals');
+    let vitals = await apiGet('/api/vitals');
     console.log('Vitals data:', vitals?.length, 'records');
+    
+    // Parse string values to numbers (API returns strings like "44.35")
+    if (vitals && Array.isArray(vitals)) {
+      vitals = vitals.map(v => ({
+        ...v,
+        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+        rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null
+      }));
+    }
     
     if (!vitals || vitals.length === 0) {
       console.log('No vitals data found');
@@ -404,7 +432,7 @@ async function loadHRVStatus() {
     
     // Sort by date descending and get latest HRV entry
     const sortedVitals = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined);
+    const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
     
     console.log('Latest vital:', latestVital);
     
@@ -468,8 +496,9 @@ async function loadHRVStatus() {
     const sleepData = await apiGet('/api/sleep');
     if (sleepData && sleepData.length > 0) {
       const latestSleep = sleepData.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-      if (latestSleep && latestSleep.deepSleepMin) {
-        document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${latestSleep.deepSleepMin}min`;
+      const deepSleepMin = latestSleep?.deepSleepMin || latestSleep?.deepSleepMinutes || 0;
+      if (deepSleepMin) {
+        document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${deepSleepMin}min`;
       }
     }
     
@@ -935,7 +964,19 @@ function setReaction(value) {
 async function loadVitals() {
   const energy = await apiGet('/api/energy');
   const sleep = await apiGet('/api/sleep');
-  const vitals = await apiGet('/api/vitals');
+  let vitals = await apiGet('/api/vitals');
+  
+  // Parse string values to numbers (API returns strings like "44.35")
+  if (vitals && Array.isArray(vitals)) {
+    vitals = vitals.map(v => ({
+      ...v,
+      hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+      rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null,
+      blood_oxygen: v.blood_oxygen !== null && v.blood_oxygen !== undefined ? parseFloat(v.blood_oxygen) : null,
+      respiratory_rate: v.respiratory_rate !== null && v.respiratory_rate !== undefined ? parseFloat(v.respiratory_rate) : null,
+      heart_rate: v.heart_rate !== null && v.heart_rate !== undefined ? parseFloat(v.heart_rate) : null
+    }));
+  }
   
   renderEnergyChart(energy);
   renderSleepChart(sleep);
@@ -953,9 +994,15 @@ function renderHRVChart(vitals) {
     return;
   }
   
+  // Parse string values to numbers
+  const parsedVitals = vitals.map(v => ({
+    ...v,
+    hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null
+  }));
+  
   // Sort by date and get last 30 days
-  const sortedVitals = vitals
-    .filter(v => v.hrv !== null && v.hrv !== undefined)
+  const sortedVitals = parsedVitals
+    .filter(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv))
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(-30);
   
@@ -1021,7 +1068,7 @@ function renderHRVTrendChart(vitals) {
   
   // Filter for HRV records only, sort by date ascending, get last 30 days
   const hrvData = vitals
-    .filter(v => v.hrv !== null && v.hrv !== undefined)
+    .filter(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv))
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(-30);
   
@@ -1178,16 +1225,20 @@ function renderSleepChart(sleep) {
   if (!sleep || sleep.length === 0) return;
   
   // Handle both Apple Health format (durationHours, date) and manual format (hours, createdAt)
+  // Map API field names to frontend expected names
   const sortedSleep = sleep
     .map(s => ({
-      date: s.date || new Date(s.createdAt).toISOString().split('T')[0],
-      hours: s.durationHours || s.hours || 0,
-      deepSleep: s.deepSleepMin || 0
+      date: s.date || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : null),
+      hours: s.durationHours !== undefined ? s.durationHours : s.totalHours !== undefined ? s.totalHours : s.hours || 0,
+      deepSleep: s.deepSleepMin !== undefined ? s.deepSleepMin : s.deepSleepMinutes || 0
     }))
+    .filter(s => s.date)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(-14);
   
-  const labels = sortedSleep.map(s => s.date.slice(5)); // MM-DD format
+  if (sortedSleep.length === 0) return;
+  
+  const labels = sortedSleep.map(s => s.date ? s.date.slice(5) : '--'); // MM-DD format
   const data = sortedSleep.map(s => s.hours);
   const deepSleepData = sortedSleep.map(s => (s.deepSleep / 60).toFixed(1)); // Convert min to hours
   
@@ -1688,11 +1739,34 @@ async function loadSleep() {
   try {
     // Fetch sleep data
     const sleepRes = await fetch(`${API_BASE}/api/sleep`);
-    const sleepData = await sleepRes.json();
+    let sleepData = await sleepRes.json();
     
     // Fetch vitals for HRV correlation
     const vitalsRes = await fetch(`${API_BASE}/api/vitals`);
-    const vitalsData = await vitalsRes.json();
+    let vitalsData = await vitalsRes.json();
+    
+    // Parse vitals string values to numbers
+    if (vitalsData && Array.isArray(vitalsData)) {
+      vitalsData = vitalsData.map(v => ({
+        ...v,
+        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null
+      }));
+    }
+    
+    // Map API field names to frontend expected names
+    if (sleepData && Array.isArray(sleepData)) {
+      sleepData = sleepData.map(s => ({
+        ...s,
+        // Map API field names (durationHours, deepSleepMin, etc.) to frontend names (totalHours, deepSleepMinutes, etc.)
+        totalHours: s.totalHours !== undefined ? s.totalHours : s.durationHours !== undefined ? s.durationHours : s.duration || 0,
+        deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : s.deepSleepMin !== undefined ? s.deepSleepMin : 0,
+        remMinutes: s.remMinutes !== undefined ? s.remMinutes : s.remMin !== undefined ? s.remMin : 0,
+        coreMinutes: s.coreMinutes !== undefined ? s.coreMinutes : s.coreMin !== undefined ? s.coreMin : 0,
+        awakeMinutes: s.awakeMinutes !== undefined ? s.awakeMinutes : s.awakeMin !== undefined ? s.awakeMin : 0,
+        // Ensure date is properly parsed
+        date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
+      }));
+    }
     
     if (sleepData && sleepData.length > 0) {
       renderSleepSummary(sleepData);
@@ -1726,55 +1800,81 @@ function renderSleepSummary(sleepData) {
   
   // Last night total - handle different field names
   const totalHours = latest.totalHours || latest.durationHours || latest.duration || 0;
-  document.getElementById('sleep-last-total').textContent = `${Number(totalHours).toFixed(1)}h`;
-  document.getElementById('sleep-last-date').textContent = new Date(latest.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const totalHoursEl = document.getElementById('sleep-last-total');
+  if (totalHoursEl) {
+    totalHoursEl.textContent = totalHours ? `${Number(totalHours).toFixed(1)}h` : '--';
+  }
+  
+  const lastDateEl = document.getElementById('sleep-last-date');
+  if (lastDateEl && latest.date) {
+    lastDateEl.textContent = new Date(latest.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
   
   // Last night deep sleep
-  const deepMin = latest.deepSleepMinutes || 0;
-  document.getElementById('sleep-last-deep').textContent = `${deepMin} min`;
+  const deepMin = latest.deepSleepMinutes || latest.deepSleepMin || 0;
+  const lastDeepEl = document.getElementById('sleep-last-deep');
+  if (lastDeepEl) {
+    lastDeepEl.textContent = deepMin ? `${deepMin} min` : '--';
+  }
   
   // Color code deep sleep target
   const deepTarget = document.getElementById('sleep-deep-target');
-  if (deepMin >= 90) {
-    deepTarget.textContent = '✅ Target: 90-120 min';
-    deepTarget.className = 'text-xs text-green-400';
-  } else if (deepMin >= 60) {
-    deepTarget.textContent = '⚠️ Target: 90-120 min';
-    deepTarget.className = 'text-xs text-yellow-400';
-  } else {
-    deepTarget.textContent = '❌ Target: 90-120 min';
-    deepTarget.className = 'text-xs text-red-400';
+  if (deepTarget) {
+    if (deepMin >= 90) {
+      deepTarget.textContent = '✅ Target: 90-120 min';
+      deepTarget.className = 'text-xs text-green-400';
+    } else if (deepMin >= 60) {
+      deepTarget.textContent = '⚠️ Target: 90-120 min';
+      deepTarget.className = 'text-xs text-yellow-400';
+    } else {
+      deepTarget.textContent = '❌ Target: 90-120 min';
+      deepTarget.className = 'text-xs text-red-400';
+    }
   }
   
   // Last night quality
-  document.getElementById('sleep-last-quality').textContent = latest.quality || '--';
+  const lastQualityEl = document.getElementById('sleep-last-quality');
+  if (lastQualityEl) {
+    lastQualityEl.textContent = latest.quality || '--';
+  }
   
   // 7-day average deep sleep
-  const avgDeep = last7Days.reduce((sum, night) => sum + (night.deepSleepMinutes || 0), 0) / last7Days.length;
-  document.getElementById('sleep-avg-deep').textContent = `${Math.round(avgDeep)} min`;
+  const avgDeep = last7Days.reduce((sum, night) => sum + (night.deepSleepMinutes || night.deepSleepMin || 0), 0) / last7Days.length;
+  const avgDeepEl = document.getElementById('sleep-avg-deep');
+  if (avgDeepEl) {
+    avgDeepEl.textContent = !isNaN(avgDeep) && avgDeep > 0 ? `${Math.round(avgDeep)} min` : '--';
+  }
   
   // Deep sleep deficit
   const deficitEl = document.getElementById('sleep-deep-deficit');
-  const deficit = 105 - avgDeep; // 105 is mid-point of 90-120 target
-  if (deficit > 0) {
-    deficitEl.textContent = `${Math.round(deficit)} min below target`;
-    deficitEl.className = 'text-xs text-red-400';
-  } else {
-    deficitEl.textContent = '✅ Meeting target';
-    deficitEl.className = 'text-xs text-green-400';
+  if (deficitEl) {
+    const deficit = 105 - avgDeep; // 105 is mid-point of 90-120 target
+    if (!isNaN(avgDeep) && avgDeep > 0) {
+      if (deficit > 0) {
+        deficitEl.textContent = `${Math.round(deficit)} min below target`;
+        deficitEl.className = 'text-xs text-red-400';
+      } else {
+        deficitEl.textContent = '✅ Meeting target';
+        deficitEl.className = 'text-xs text-green-400';
+      }
+    } else {
+      deficitEl.textContent = '--';
+    }
   }
   
   // 7-day average quality
   const avgQuality = last7Days.reduce((sum, night) => sum + (parseInt(night.quality) || 0), 0) / last7Days.length;
   const avgQualityEl = document.getElementById('sleep-avg-quality');
-  if (!isNaN(avgQuality) && avgQuality > 0) {
-    avgQualityEl.textContent = avgQuality.toFixed(1);
-    // Color code quality
-    if (avgQuality >= 7) avgQualityEl.className = 'text-2xl font-bold text-green-400';
-    else if (avgQuality >= 5) avgQualityEl.className = 'text-2xl font-bold text-yellow-400';
-    else avgQualityEl.className = 'text-2xl font-bold text-red-400';
-  } else {
-    avgQualityEl.textContent = '--';
+  if (avgQualityEl) {
+    if (!isNaN(avgQuality) && avgQuality > 0) {
+      avgQualityEl.textContent = avgQuality.toFixed(1);
+      // Color code quality
+      if (avgQuality >= 7) avgQualityEl.className = 'text-2xl font-bold text-green-400';
+      else if (avgQuality >= 5) avgQualityEl.className = 'text-2xl font-bold text-yellow-400';
+      else avgQualityEl.className = 'text-2xl font-bold text-red-400';
+    } else {
+      avgQualityEl.textContent = '--';
+    }
   }
 }
 
@@ -1792,8 +1892,8 @@ function renderSleepDurationChart(sleepData) {
   const last14Days = sleepData.slice(-14);
   
   // Prepare labels and data
-  const labels = last14Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-  const durations = last14Days.map(d => d.totalHours || 0);
+  const labels = last14Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--');
+  const durations = last14Days.map(d => d.totalHours || d.durationHours || d.duration || 0);
   
   // Color code bars based on duration: red < 6h, yellow 6-7h, green > 7h
   const backgroundColors = durations.map(hours => {
@@ -1832,7 +1932,7 @@ function renderSleepDurationChart(sleepData) {
             label: function(context) {
               const hours = context.parsed.y;
               let quality = hours > 7 ? 'Good' : hours >= 6 ? 'Fair' : 'Poor';
-              return `${hours.toFixed(1)} hours (${quality})`;
+              return `${hours ? hours.toFixed(1) : '--'} hours (${quality})`;
             }
           }
         }
@@ -1876,16 +1976,20 @@ function renderDeepSleepTrendChart(sleepData, vitalsData) {
   const last14Days = sleepData.slice(-14);
   
   // Prepare labels
-  const labels = last14Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  const labels = last14Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--');
   
-  // Deep sleep data
-  const deepSleepData = last14Days.map(d => d.deepSleepMinutes || 0);
+  // Deep sleep data - map API field names to frontend expected names
+  const deepSleepData = last14Days.map(d => d.deepSleepMinutes !== undefined ? d.deepSleepMinutes : d.deepSleepMin || 0);
   
-  // Match with HRV data by date
+  // Match with HRV data by date - ensure vitals HRV values are parsed numbers
   const hrvData = last14Days.map(sleep => {
+    if (!sleep.date) return null;
     const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
     const matchingVital = vitalsData?.find(v => v.date === sleepDate);
-    return matchingVital ? matchingVital.hrv : null;
+    // HRV should already be parsed as number from loadSleep
+    return matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined && !isNaN(matchingVital.hrv) 
+      ? matchingVital.hrv 
+      : null;
   });
   
   // Calculate correlation coefficient for display
@@ -2034,39 +2138,79 @@ function renderLatestSleep(sleep) {
   
   // Sleep times - handle different field names
   const totalHours = sleep.totalHours || sleep.durationHours || sleep.duration || 0;
-  document.getElementById('sleep-latest-fell-asleep').textContent = sleep.fellAsleep || sleep.bedtime || '--';
-  document.getElementById('sleep-latest-woke-up').textContent = sleep.wokeUp || sleep.waketime || '--';
-  document.getElementById('sleep-latest-duration').textContent = `${Number(totalHours).toFixed(1)} hours`;
+  
+  const fellAsleepEl = document.getElementById('sleep-latest-fell-asleep');
+  if (fellAsleepEl) fellAsleepEl.textContent = sleep.fellAsleep || sleep.bedtime || '--';
+  
+  const wokeUpEl = document.getElementById('sleep-latest-woke-up');
+  if (wokeUpEl) wokeUpEl.textContent = sleep.wokeUp || sleep.waketime || '--';
+  
+  const durationEl = document.getElementById('sleep-latest-duration');
+  if (durationEl) {
+    durationEl.textContent = totalHours ? `${Number(totalHours).toFixed(1)} hours` : '--';
+  }
   
   // Sleep stages
   const stages = sleep.stages || {};
   
   // Awake
-  document.getElementById('sleep-latest-awake-pct').textContent = `${stages.awake || 0}%`;
-  document.getElementById('sleep-latest-awake-bar').style.width = `${stages.awake || 0}%`;
-  document.getElementById('sleep-latest-awake-time').textContent = `${sleep.awakeMinutes || 0} minutes`;
+  const awakePct = stages.awake || 0;
+  const awakeMin = sleep.awakeMinutes || sleep.awakeMin || 0;
+  const awakePctEl = document.getElementById('sleep-latest-awake-pct');
+  if (awakePctEl) awakePctEl.textContent = awakeMin ? `${awakePct}%` : '--';
+  
+  const awakeBarEl = document.getElementById('sleep-latest-awake-bar');
+  if (awakeBarEl) awakeBarEl.style.width = awakeMin ? `${awakePct}%` : '0%';
+  
+  const awakeTimeEl = document.getElementById('sleep-latest-awake-time');
+  if (awakeTimeEl) awakeTimeEl.textContent = awakeMin ? `${awakeMin} minutes` : '--';
   
   // REM
-  document.getElementById('sleep-latest-rem-pct').textContent = `${stages.rem || 0}%`;
-  document.getElementById('sleep-latest-rem-bar').style.width = `${stages.rem || 0}%`;
-  document.getElementById('sleep-latest-rem-time').textContent = `${sleep.remMinutes || 0} minutes`;
+  const remPct = stages.rem || 0;
+  const remMin = sleep.remMinutes || sleep.remMin || 0;
+  const remPctEl = document.getElementById('sleep-latest-rem-pct');
+  if (remPctEl) remPctEl.textContent = remMin ? `${remPct}%` : '--';
+  
+  const remBarEl = document.getElementById('sleep-latest-rem-bar');
+  if (remBarEl) remBarEl.style.width = remMin ? `${remPct}%` : '0%';
+  
+  const remTimeEl = document.getElementById('sleep-latest-rem-time');
+  if (remTimeEl) remTimeEl.textContent = remMin ? `${remMin} minutes` : '--';
   
   // Core
-  document.getElementById('sleep-latest-core-pct').textContent = `${stages.core || 0}%`;
-  document.getElementById('sleep-latest-core-bar').style.width = `${stages.core || 0}%`;
-  document.getElementById('sleep-latest-core-time').textContent = `${sleep.coreMinutes || 0} minutes`;
+  const corePct = stages.core || 0;
+  const coreMin = sleep.coreMinutes || sleep.coreMin || 0;
+  const corePctEl = document.getElementById('sleep-latest-core-pct');
+  if (corePctEl) corePctEl.textContent = coreMin ? `${corePct}%` : '--';
+  
+  const coreBarEl = document.getElementById('sleep-latest-core-bar');
+  if (coreBarEl) coreBarEl.style.width = coreMin ? `${corePct}%` : '0%';
+  
+  const coreTimeEl = document.getElementById('sleep-latest-core-time');
+  if (coreTimeEl) coreTimeEl.textContent = coreMin ? `${coreMin} minutes` : '--';
   
   // Deep
-  document.getElementById('sleep-latest-deep-pct').textContent = `${stages.deep || 0}%`;
-  document.getElementById('sleep-latest-deep-bar').style.width = `${stages.deep || 0}%`;
-  document.getElementById('sleep-latest-deep-time').textContent = `${sleep.deepSleepMinutes || 0} minutes`;
+  const deepPct = stages.deep || 0;
+  const deepMin = sleep.deepSleepMinutes || sleep.deepSleepMin || 0;
+  const deepPctEl = document.getElementById('sleep-latest-deep-pct');
+  if (deepPctEl) deepPctEl.textContent = deepMin ? `${deepPct}%` : '--';
+  
+  const deepBarEl = document.getElementById('sleep-latest-deep-bar');
+  if (deepBarEl) deepBarEl.style.width = deepMin ? `${deepPct}%` : '0%';
+  
+  const deepTimeEl = document.getElementById('sleep-latest-deep-time');
+  if (deepTimeEl) deepTimeEl.textContent = deepMin ? `${deepMin} minutes` : '--';
   
   // Notes
-  if (sleep.notes) {
-    document.getElementById('sleep-latest-notes').textContent = sleep.notes;
-    document.getElementById('sleep-latest-notes-container').classList.remove('hidden');
-  } else {
-    document.getElementById('sleep-latest-notes-container').classList.add('hidden');
+  const notesContainer = document.getElementById('sleep-latest-notes-container');
+  const notesEl = document.getElementById('sleep-latest-notes');
+  if (notesContainer && notesEl) {
+    if (sleep.notes) {
+      notesEl.textContent = sleep.notes;
+      notesContainer.classList.remove('hidden');
+    } else {
+      notesContainer.classList.add('hidden');
+    }
   }
 }
 
@@ -2084,25 +2228,25 @@ function renderSleepStagesChart(sleepData) {
   charts.sleepStages = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: last7Days.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+      labels: last7Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'),
       datasets: [
         {
           label: 'Deep Sleep (min)',
-          data: last7Days.map(d => d.deepSleepMinutes || 0),
+          data: last7Days.map(d => d.deepSleepMinutes !== undefined ? d.deepSleepMinutes : d.deepSleepMin || 0),
           backgroundColor: '#8b5cf6',
           borderColor: '#8b5cf6',
           borderWidth: 2
         },
         {
           label: 'REM Sleep (min)',
-          data: last7Days.map(d => d.remMinutes || 0),
+          data: last7Days.map(d => d.remMinutes !== undefined ? d.remMinutes : d.remMin || 0),
           backgroundColor: '#06b6d4',
           borderColor: '#06b6d4',
           borderWidth: 2
         },
         {
           label: 'Core Sleep (min)',
-          data: last7Days.map(d => d.coreMinutes || 0),
+          data: last7Days.map(d => d.coreMinutes !== undefined ? d.coreMinutes : d.coreMin || 0),
           backgroundColor: '#3b82f6',
           borderColor: '#3b82f6',
           borderWidth: 2
@@ -2169,14 +2313,18 @@ function renderSleepHRVChart(sleepData, vitalsData) {
   
   // Match sleep data with HRV data by date
   const matchedData = sleepData.slice(-14).map(sleep => {
+    if (!sleep.date) return null;
     const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
     const matchingVital = vitalsData.find(v => v.date === sleepDate);
+    // HRV should already be parsed as number from loadSleep
     return {
       date: sleepDate,
-      deepSleep: sleep.deepSleepMinutes || 0,
-      hrv: matchingVital ? matchingVital.hrv : null
+      deepSleep: sleep.deepSleepMinutes !== undefined ? sleep.deepSleepMinutes : sleep.deepSleepMin || 0,
+      hrv: matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined && !isNaN(matchingVital.hrv)
+        ? matchingVital.hrv 
+        : null
     };
-  }).filter(d => d.hrv !== null);
+  }).filter(d => d && d.hrv !== null);
   
   if (matchedData.length === 0) {
     ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
@@ -2243,20 +2391,29 @@ function renderSleepHRVChart(sleepData, vitalsData) {
 function renderSleepHistoryTable(sleepData) {
   const tbody = document.getElementById('sleep-history-table');
   
+  if (!tbody) return;
+  
   const sortedData = [...sleepData].reverse(); // Most recent first
   
   tbody.innerHTML = sortedData.map(sleep => {
-    const deepColor = (sleep.deepSleepMinutes || 0) >= 90 ? 'text-green-400' : (sleep.deepSleepMinutes || 0) >= 60 ? 'text-yellow-400' : 'text-red-400';
+    const deepMin = sleep.deepSleepMinutes || sleep.deepSleepMin || 0;
+    const totalHours = sleep.totalHours || sleep.durationHours || sleep.duration || 0;
+    const remMin = sleep.remMinutes || sleep.remMin || 0;
+    const coreMin = sleep.coreMinutes || sleep.coreMin || 0;
+    const awakeMin = sleep.awakeMinutes || sleep.awakeMin || 0;
+    const quality = sleep.quality || '--';
+    
+    const deepColor = deepMin >= 90 ? 'text-green-400' : deepMin >= 60 ? 'text-yellow-400' : 'text-red-400';
     
     return `
       <tr class="border-b border-gray-800 hover:bg-gray-800">
-        <td class="p-2">${new Date(sleep.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-        <td class="p-2">${sleep.totalHours.toFixed(1)}h</td>
-        <td class="p-2 ${deepColor} font-medium">${sleep.deepSleepMinutes || 0} min</td>
-        <td class="p-2">${sleep.remMinutes || 0} min</td>
-        <td class="p-2">${sleep.coreMinutes || 0} min</td>
-        <td class="p-2 ${(sleep.awakeMinutes || 0) > 0 ? 'text-red-400' : 'text-gray-400'}">${sleep.awakeMinutes || 0} min</td>
-        <td class="p-2">${sleep.quality || '--'}/10</td>
+        <td class="p-2">${sleep.date ? new Date(sleep.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}</td>
+        <td class="p-2">${totalHours ? Number(totalHours).toFixed(1) : '--'}h</td>
+        <td class="p-2 ${deepColor} font-medium">${deepMin || '--'} min</td>
+        <td class="p-2">${remMin || '--'} min</td>
+        <td class="p-2">${coreMin || '--'} min</td>
+        <td class="p-2 ${awakeMin > 0 ? 'text-red-400' : 'text-gray-400'}">${awakeMin || '--'} min</td>
+        <td class="p-2">${quality}/10</td>
       </tr>
     `;
   }).join('');
@@ -2323,21 +2480,29 @@ function updateHRVCard(vitals) {
   const changeEl = document.getElementById('status-hrv-change');
   const statusEl = document.getElementById('status-hrv-status');
   
+  if (!card || !valueEl) return;
+  
   if (!vitals || vitals.length === 0) {
     valueEl.textContent = '--';
-    statusEl.textContent = 'No data';
+    if (statusEl) statusEl.textContent = 'No data';
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
     return;
   }
   
+  // Parse string values to numbers
+  const parsedVitals = vitals.map(v => ({
+    ...v,
+    hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null
+  }));
+  
   // Sort by date descending
-  const sorted = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
-  const latest = sorted.find(v => v.hrv !== null && v.hrv !== undefined);
-  const previous = sorted.find((v, i) => i > 0 && v.hrv !== null && v.hrv !== undefined);
+  const sorted = parsedVitals.sort((a, b) => new Date(b.date) - new Date(a.date));
+  const latest = sorted.find(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
+  const previous = sorted.find((v, i) => i > 0 && v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
   
   if (!latest) {
     valueEl.textContent = '--';
-    statusEl.textContent = 'No HRV';
+    if (statusEl) statusEl.textContent = 'No HRV';
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
     return;
   }
@@ -2393,6 +2558,8 @@ function updateSleepCard(sleep) {
   const durationEl = document.getElementById('status-sleep-duration');
   const scoreEl = document.getElementById('status-sleep-score');
   
+  if (!card || !durationEl || !scoreEl) return;
+  
   if (!sleep || sleep.length === 0) {
     durationEl.textContent = '--';
     scoreEl.textContent = '--';
@@ -2400,14 +2567,14 @@ function updateSleepCard(sleep) {
     return;
   }
   
-  // Get latest sleep entry
+  // Get latest sleep entry - map API field names
   const latest = sleep[sleep.length - 1];
-  const hours = latest.totalHours || 0;
+  const hours = latest.totalHours !== undefined ? latest.totalHours : latest.durationHours !== undefined ? latest.durationHours : latest.duration || 0;
   const quality = latest.quality || 0;
-  const deepMin = latest.deepSleepMinutes || 0;
+  const deepMin = latest.deepSleepMinutes !== undefined ? latest.deepSleepMinutes : latest.deepSleepMin || 0;
   
-  durationEl.textContent = hours.toFixed(1);
-  scoreEl.textContent = quality;
+  durationEl.textContent = hours ? hours.toFixed(1) : '--';
+  scoreEl.textContent = quality || '--';
   
   // Determine status based on hours and quality
   card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
@@ -2498,21 +2665,29 @@ function updateHRVMiniChart(vitals) {
   const container = document.getElementById('hrv-mini-chart');
   const statusEl = document.getElementById('hrv-trend-mini-status');
   
+  if (!container) return;
+  
   if (!vitals || vitals.length === 0) {
     container.innerHTML = Array(7).fill('<div class="flex-1 bg-gray-700 rounded-t" style="height: 30%"></div>').join('');
-    statusEl.textContent = '--';
+    if (statusEl) statusEl.textContent = '--';
     return;
   }
   
+  // Parse string values to numbers
+  const parsedVitals = vitals.map(v => ({
+    ...v,
+    hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null
+  }));
+  
   // Get last 7 days of HRV data
-  const sorted = vitals
-    .filter(v => v.hrv !== null && v.hrv !== undefined)
+  const sorted = parsedVitals
+    .filter(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv))
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(-7);
   
   if (sorted.length === 0) {
     container.innerHTML = Array(7).fill('<div class="flex-1 bg-gray-700 rounded-t" style="height: 30%"></div>').join('');
-    statusEl.textContent = 'No data';
+    if (statusEl) statusEl.textContent = 'No data';
     return;
   }
   
@@ -2538,23 +2713,25 @@ function updateHRVMiniChart(vitals) {
   container.innerHTML = bars.join('');
   
   // Update trend status
-  if (sorted.length >= 2) {
-    const first = sorted[0].hrv;
-    const last = sorted[sorted.length - 1].hrv;
-    const change = last - first;
-    
-    if (change > 5) {
-      statusEl.textContent = '↑ Improving';
-      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-300';
-    } else if (change < -5) {
-      statusEl.textContent = '↓ Declining';
-      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+  if (statusEl) {
+    if (sorted.length >= 2) {
+      const first = sorted[0].hrv;
+      const last = sorted[sorted.length - 1].hrv;
+      const change = last - first;
+      
+      if (change > 5) {
+        statusEl.textContent = '↑ Improving';
+        statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-300';
+      } else if (change < -5) {
+        statusEl.textContent = '↓ Declining';
+        statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+      } else {
+        statusEl.textContent = '→ Stable';
+        statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-gray-700';
+      }
     } else {
-      statusEl.textContent = '→ Stable';
-      statusEl.className = 'text-xs px-2 py-0.5 rounded-full bg-gray-700';
+      statusEl.textContent = '--';
     }
-  } else {
-    statusEl.textContent = '--';
   }
 }
 
