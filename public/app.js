@@ -179,22 +179,29 @@ async function loadOverview() {
 // Load HRV Status for Overview
 async function loadHRVStatus() {
   try {
-    const response = await fetch('/api/symptoms');
-    const symptoms = await response.json();
+    // Fetch from /api/vitals where Apple Health data is stored
+    const vitals = await apiGet('/api/vitals');
     
-    // Find latest HRV entry
-    const hrvEntry = symptoms.reverse().find(s => s.type === 'hrv');
-    const sleepEntry = symptoms.reverse().find(s => s.type === 'sleep');
-    
-    if (!hrvEntry) {
+    if (!vitals || vitals.length === 0) {
       document.getElementById('hrv-current').textContent = '--';
       document.getElementById('hrv-status').textContent = 'No data';
       document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
       return;
     }
     
-    const hrv = hrvEntry.hrvValue;
-    const baseline = hrvEntry.hrvBaseline || 61;
+    // Sort by date descending and get latest HRV entry
+    const sortedVitals = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined);
+    
+    if (!latestVital) {
+      document.getElementById('hrv-current').textContent = '--';
+      document.getElementById('hrv-status').textContent = 'No data';
+      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      return;
+    }
+    
+    const hrv = latestVital.hrv;
+    const baseline = 61; // Your baseline HRV
     const diff = hrv - baseline;
     const diffPercent = ((diff / baseline) * 100).toFixed(0);
     
@@ -239,9 +246,13 @@ async function loadHRVStatus() {
     const card = document.getElementById('hrv-status-card');
     card.className = `card p-6 mb-6 border-l-4 ${cardBorder}`;
     
-    // Deep sleep info
-    if (sleepEntry && sleepEntry.deepSleep) {
-      document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${sleepEntry.deepSleep}`;
+    // Fetch latest sleep data for deep sleep info
+    const sleepData = await apiGet('/api/sleep');
+    if (sleepData && sleepData.length > 0) {
+      const latestSleep = sleepData.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+      if (latestSleep && latestSleep.deepSleepMin) {
+        document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${latestSleep.deepSleepMin}min`;
+      }
     }
     
   } catch (error) {
@@ -585,9 +596,76 @@ function setReaction(value) {
 async function loadVitals() {
   const energy = await apiGet('/api/energy');
   const sleep = await apiGet('/api/sleep');
+  const vitals = await apiGet('/api/vitals');
   
   renderEnergyChart(energy);
   renderSleepChart(sleep);
+  renderHRVChart(vitals);
+}
+
+function renderHRVChart(vitals) {
+  const ctx = document.getElementById('hrv-chart');
+  if (!ctx) return;
+  
+  if (charts.hrv) charts.hrv.destroy();
+  
+  if (!vitals || vitals.length === 0) {
+    // Show "No data" message
+    return;
+  }
+  
+  // Sort by date and get last 30 days
+  const sortedVitals = vitals
+    .filter(v => v.hrv !== null && v.hrv !== undefined)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-30);
+  
+  const labels = sortedVitals.map(v => v.date);
+  const data = sortedVitals.map(v => v.hrv);
+  const baseline = 61; // Your baseline
+  
+  charts.hrv = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'HRV (ms)',
+        data,
+        borderColor: '#6366f1',
+        backgroundColor: '#6366f120',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 3
+      }, {
+        label: 'Baseline (61ms)',
+        data: labels.map(() => baseline),
+        borderColor: '#10b981',
+        borderDash: [5, 5],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#9ca3af' } }
+      },
+      scales: {
+        y: {
+          min: 30,
+          max: 100,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: '#9ca3af', maxTicksLimit: 7 }
+        }
+      }
+    }
+  });
 }
 
 function renderEnergyChart(energy) {
@@ -630,24 +708,42 @@ function renderSleepChart(sleep) {
   
   if (charts.sleep) charts.sleep.destroy();
   
-  const labels = sleep?.map(s => new Date(s.createdAt).toLocaleDateString()).slice(-14) || [];
-  const data = sleep?.map(s => s.hours).slice(-14) || [];
+  if (!sleep || sleep.length === 0) return;
+  
+  // Handle both Apple Health format (durationHours, date) and manual format (hours, createdAt)
+  const sortedSleep = sleep
+    .map(s => ({
+      date: s.date || new Date(s.createdAt).toISOString().split('T')[0],
+      hours: s.durationHours || s.hours || 0,
+      deepSleep: s.deepSleepMin || 0
+    }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-14);
+  
+  const labels = sortedSleep.map(s => s.date.slice(5)); // MM-DD format
+  const data = sortedSleep.map(s => s.hours);
+  const deepSleepData = sortedSleep.map(s => (s.deepSleep / 60).toFixed(1)); // Convert min to hours
   
   charts.sleep = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        label: 'Hours Slept',
+        label: 'Total Sleep (hrs)',
         data,
         backgroundColor: '#8b5cf6',
+        borderRadius: 4
+      }, {
+        label: 'Deep Sleep (hrs)',
+        data: deepSleepData,
+        backgroundColor: '#10b981',
         borderRadius: 4
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { labels: { color: '#9ca3af' } } },
       scales: {
         y: { min: 0, max: 12, grid: { color: '#374151' }, ticks: { color: '#9ca3af' } },
         x: { grid: { display: false }, ticks: { color: '#9ca3af', maxTicksLimit: 7 } }
