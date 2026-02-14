@@ -1363,6 +1363,10 @@ function renderSymptomsChart(symptoms, filterType = 'all') {
   const ctx = document.getElementById('symptoms-chart');
   if (!ctx) return;
   
+  // Fix chart stretching - set explicit height
+  ctx.style.height = '200px';
+  ctx.style.maxHeight = '200px';
+  
   if (charts.symptoms) {
     charts.symptoms.destroy();
     charts.symptoms = null;
@@ -1436,7 +1440,8 @@ function renderSymptomsChart(symptoms, filterType = 'all') {
     },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
+      maintainAspectRatio: true,
+      aspectRatio: 2,
       plugins: {
         legend: { 
           labels: { color: '#9ca3af' },
@@ -1473,6 +1478,10 @@ function renderSymptomsChart(symptoms, filterType = 'all') {
 function renderBloatingChart(symptoms, vitals) {
   const ctx = document.getElementById('bloating-chart');
   if (!ctx) return;
+  
+  // Fix chart stretching - set explicit height
+  ctx.style.height = '200px';
+  ctx.style.maxHeight = '200px';
   
   if (charts.bloating) {
     charts.bloating.destroy();
@@ -1534,7 +1543,8 @@ function renderBloatingChart(symptoms, vitals) {
     },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
+      maintainAspectRatio: true,
+      aspectRatio: 2,
       interaction: {
         mode: 'index',
         intersect: false
