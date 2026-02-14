@@ -43,6 +43,15 @@ async function initDatabase() {
         hrv_value INTEGER,
         hrv_baseline INTEGER,
         rhr INTEGER,
+        blood_oxygen INTEGER,
+        respiratory_rate REAL,
+        duration_hours REAL,
+        quality INTEGER,
+        deep_sleep_min INTEGER,
+        rem_sleep_min INTEGER,
+        exercise_type TEXT,
+        duration INTEGER,
+        calories INTEGER,
         symptoms TEXT[],
         notes TEXT,
         source TEXT,
@@ -233,6 +242,125 @@ app.get('/api/vitals', async (req, res) => {
     const result = await dbPool.query('SELECT * FROM symptoms WHERE type IN ($1, $2) ORDER BY created_at DESC', ['hrv', 'sleep']);
     res.json(result.rows);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/vitals', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const { date, hrv, rhr, bloodOxygen, respiratoryRate, notes, type } = req.body;
+    const recordType = type || 'hrv';
+    const result = await dbPool.query(
+      `INSERT INTO symptoms (date, type, hrv_value, rhr, blood_oxygen, respiratory_rate, notes, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *`,
+      [date, recordType, hrv, rhr, bloodOxygen, respiratoryRate, notes]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Vitals insert error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Sleep ---
+app.get('/api/sleep', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const result = await dbPool.query('SELECT * FROM symptoms WHERE type = $1 ORDER BY created_at DESC', ['sleep']);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sleep', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const { date, durationHours, quality, deepSleepMin, remSleepMin, notes } = req.body;
+    const result = await dbPool.query(
+      `INSERT INTO symptoms (date, type, duration_hours, quality, deep_sleep_min, rem_sleep_min, notes, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *`,
+      [date, 'sleep', durationHours, quality, deepSleepMin, remSleepMin, notes]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Sleep insert error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Symptoms ---
+app.get('/api/symptoms', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const result = await dbPool.query('SELECT * FROM symptoms ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/symptoms', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const { date, type, severity, notes, timeOfDay } = req.body;
+    const result = await dbPool.query(
+      `INSERT INTO symptoms (date, type, severity, notes, time, created_at) 
+       VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+      [date, type, severity, notes, timeOfDay]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Symptoms insert error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Exercise ---
+app.get('/api/exercise', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const result = await dbPool.query('SELECT * FROM symptoms WHERE type = $1 ORDER BY created_at DESC', ['exercise']);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/exercise', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const { date, type, duration, calories, notes } = req.body;
+    const result = await dbPool.query(
+      `INSERT INTO symptoms (date, type, exercise_type, duration, calories, notes, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *`,
+      [date, 'exercise', type, duration, calories, notes]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Exercise insert error:', err);
     res.status(500).json({ error: err.message });
   }
 });
