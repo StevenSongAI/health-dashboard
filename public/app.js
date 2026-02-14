@@ -3023,6 +3023,10 @@ function renderSleepChart(sleep) {
     console.log('DEBUG: Chart data (hours):', data);
     console.log('DEBUG: Chart deep sleep (hours):', deepSleepData);
     
+    // Set explicit height on canvas to prevent stretching
+    ctx.style.height = '200px';
+    ctx.style.maxHeight = '200px';
+    
     charts.sleep = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -3043,7 +3047,8 @@ function renderSleepChart(sleep) {
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
+        maintainAspectRatio: true,
+        aspectRatio: 2,
         plugins: { 
           legend: { 
             labels: { color: '#9ca3af' } 
