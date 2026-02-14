@@ -2840,7 +2840,7 @@ function updateProtocolCard(protocol) {
     const totalDays = protocol.totalDays || 37;
     
     dayEl.textContent = currentDay;
-    progressEl.textContent = `Day ${currentDay} of ${totalDays}`;
+    progressEl.textContent = `${currentDay} of ${totalDays}`;
     
     card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
     const progress = currentDay / totalDays;
@@ -2862,7 +2862,7 @@ function updateProtocolCard(protocol) {
   const totalDays = protocol.totalDays || 37; // Default to extended protocol
   
   dayEl.textContent = currentDay;
-  progressEl.textContent = `Day ${currentDay} of ${totalDays}`;
+  progressEl.textContent = `${currentDay} of ${totalDays}`;
   
   // Determine status based on progress
   card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
