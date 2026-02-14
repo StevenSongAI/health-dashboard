@@ -1184,64 +1184,78 @@ function renderHRVChart(vitals) {
 function renderHRVTrendChart(vitals) {
   console.log('=== DEBUG: renderHRVTrendChart() START ===');
   
-  const ctx = document.getElementById('hrv-trend-chart');
-  console.log('DEBUG: hrv-trend-chart canvas found:', !!ctx);
-  
-  if (!ctx) {
-    console.error('DEBUG: hrv-trend-chart element NOT FOUND!');
-    return;
-  }
-  
-  if (charts.hrvTrend) {
-    console.log('DEBUG: Destroying existing hrvTrend chart');
-    charts.hrvTrend.destroy();
-  }
-  
-  if (!vitals || vitals.length === 0) {
-    console.log('DEBUG: No vitals data for HRV chart');
-    return;
-  }
-  
-  // Filter for HRV records only, sort by date ascending, get last 30 days
-  const hrvData = vitals
-    .filter(v => {
-      const hasHRV = v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv);
-      if (!hasHRV) console.log('DEBUG: Filtering out vital (no HRV):', v);
-      return hasHRV;
-    })
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(-30);
-  
-  console.log('DEBUG: HRV data points for chart:', hrvData.length);
-  console.log('DEBUG: HRV data sample:', hrvData.slice(0, 3));
-  
-  if (hrvData.length === 0) {
-    console.log('DEBUG: No HRV data points after filtering');
-    return;
-  }
-  
-  // Format dates as MM-DD
-  const labels = hrvData.map(v => {
-    const date = new Date(v.date);
-    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  });
-  
-  const dataValues = hrvData.map(v => v.hrv);
-  const baseline = 61;
-  
-  console.log('DEBUG: Chart labels:', labels);
-  console.log('DEBUG: Chart values:', dataValues);
-  
-  // Create color-coded point colors based on HRV value
-  const pointColors = dataValues.map(hrv => {
-    if (hrv < 51) return '#ef4444'; // Red: Critical
-    if (hrv < 61) return '#f59e0b'; // Yellow: Below baseline
-    return '#10b981'; // Green: Normal/optimal
-  });
-  
-  const pointRadii = dataValues.map(() => 5);
-  
   try {
+    const ctx = document.getElementById('hrv-trend-chart');
+    console.log('DEBUG: hrv-trend-chart canvas found:', !!ctx);
+    
+    if (!ctx) {
+      console.error('DEBUG: hrv-trend-chart element NOT FOUND!');
+      return;
+    }
+    
+    if (charts.hrvTrend) {
+      console.log('DEBUG: Destroying existing hrvTrend chart');
+      charts.hrvTrend.destroy();
+      charts.hrvTrend = null;
+    }
+    
+    if (!vitals || !Array.isArray(vitals) || vitals.length === 0) {
+      console.log('DEBUG: No vitals data for HRV chart');
+      return;
+    }
+    console.log('DEBUG: Vitals data count:', vitals.length);
+    
+    // Parse string values to numbers and filter for valid HRV records
+    const hrvData = vitals
+      .map(v => {
+        try {
+          const hrv = v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null;
+          return {
+            ...v,
+            hrv: hrv,
+            date: v.date || (v.createdAt ? v.createdAt.split('T')[0] : null)
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing vital record:', v, err);
+          return null;
+        }
+      })
+      .filter(v => v && v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv) && v.date)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-30);
+    
+    console.log('DEBUG: HRV data points for chart:', hrvData.length);
+    
+    if (hrvData.length === 0) {
+      console.log('DEBUG: No HRV data points after filtering');
+      return;
+    }
+    
+    // Format dates as MM-DD
+    const labels = hrvData.map(v => {
+      try {
+        const date = new Date(v.date);
+        return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      } catch (err) {
+        return '--';
+      }
+    });
+    
+    const dataValues = hrvData.map(v => v.hrv);
+    const baseline = 61;
+    
+    console.log('DEBUG: Chart labels:', labels.slice(0, 5), '...');
+    console.log('DEBUG: Chart values:', dataValues.slice(0, 5), '...');
+    
+    // Create color-coded point colors based on HRV value
+    const pointColors = dataValues.map(hrv => {
+      if (hrv < 51) return '#ef4444'; // Red: Critical
+      if (hrv < 61) return '#f59e0b'; // Yellow: Below baseline
+      return '#10b981'; // Green: Normal/optimal
+    });
+    
+    const pointRadii = dataValues.map(() => 5);
+    
     charts.hrvTrend = new Chart(ctx, {
       type: 'line',
       data: {
@@ -1328,105 +1342,214 @@ function renderHRVTrendChart(vitals) {
         }
       }
     });
-    console.log('DEBUG: HRV chart created successfully');
+    console.log('DEBUG: HRV trend chart created successfully');
   } catch (err) {
-    console.error('DEBUG: Error creating HRV chart:', err);
+    console.error('DEBUG: Error in renderHRVTrendChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
   }
   
   console.log('=== DEBUG: renderHRVTrendChart() END ===');
 }
 
 function renderEnergyChart(energy) {
-  const ctx = document.getElementById('energy-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderEnergyChart() START ===');
   
-  if (charts.energy) charts.energy.destroy();
-  
-  const labels = energy?.map(e => new Date(e.createdAt).toLocaleDateString()).slice(-14) || [];
-  const data = energy?.map(e => e.level).slice(-14) || [];
-  
-  charts.energy = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Energy Level',
-        data,
-        borderColor: '#3b82f6',
-        backgroundColor: '#3b82f620',
-        tension: 0.4,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { min: 0, max: 10, grid: { color: '#374151' }, ticks: { color: '#9ca3af' } },
-        x: { grid: { display: false }, ticks: { color: '#9ca3af', maxTicksLimit: 7 } }
-      }
+  try {
+    const ctx = document.getElementById('energy-chart');
+    if (!ctx) {
+      console.error('DEBUG: energy-chart canvas element NOT FOUND!');
+      return;
     }
-  });
+    console.log('DEBUG: energy-chart canvas found');
+    
+    if (charts.energy) {
+      console.log('DEBUG: Destroying existing energy chart');
+      charts.energy.destroy();
+    }
+    
+    if (!energy || !Array.isArray(energy) || energy.length === 0) {
+      console.log('DEBUG: No energy data available');
+      return;
+    }
+    console.log('DEBUG: Energy data count:', energy.length);
+    
+    const labels = energy.map(e => {
+      try {
+        return e.createdAt ? new Date(e.createdAt).toLocaleDateString() : '--';
+      } catch (err) {
+        return '--';
+      }
+    }).slice(-14);
+    
+    const data = energy.map(e => {
+      const level = parseInt(e.level);
+      return isNaN(level) ? 0 : level;
+    }).slice(-14);
+    
+    console.log('DEBUG: Chart labels:', labels);
+    console.log('DEBUG: Chart data:', data);
+    
+    charts.energy = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Energy Level',
+          data,
+          borderColor: '#3b82f6',
+          backgroundColor: '#3b82f620',
+          tension: 0.4,
+          fill: true,
+          pointRadius: 4,
+          pointBackgroundColor: '#3b82f6'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb'
+          }
+        },
+        scales: {
+          y: { 
+            min: 0, 
+            max: 10, 
+            grid: { color: '#374151' }, 
+            ticks: { color: '#9ca3af' } 
+          },
+          x: { 
+            grid: { display: false }, 
+            ticks: { color: '#9ca3af', maxTicksLimit: 7 } 
+          }
+        }
+      }
+    });
+    console.log('DEBUG: Energy chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderEnergyChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
+  }
+  
+  console.log('=== DEBUG: renderEnergyChart() END ===');
 }
 
 function renderSleepChart(sleep) {
-  const ctx = document.getElementById('sleep-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderSleepChart() START ===');
   
-  if (charts.sleep) charts.sleep.destroy();
-  
-  if (!sleep || sleep.length === 0) return;
-  
-  // Handle both Apple Health format (durationHours, date) and manual format (hours, createdAt)
-  // Map API field names to frontend expected names
-  const sortedSleep = sleep
-    .map(s => ({
-      date: s.date || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : null),
-      hours: s.durationHours !== undefined ? s.durationHours : 
-             s.totalHours !== undefined ? s.totalHours : 
-             s.sleep_hours !== undefined ? parseFloat(s.sleep_hours) :
-             s.hours || 0,
-      deepSleep: s.deepSleepMin !== undefined ? s.deepSleepMin : 
-                 s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : 
-                 s.deep_sleep_minutes !== undefined ? s.deep_sleep_minutes : 0
-    }))
-    .filter(s => s.date)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(-14);
-  
-  if (sortedSleep.length === 0) return;
-  
-  const labels = sortedSleep.map(s => s.date ? s.date.slice(5) : '--'); // MM-DD format
-  const data = sortedSleep.map(s => s.hours);
-  const deepSleepData = sortedSleep.map(s => (s.deepSleep / 60).toFixed(1)); // Convert min to hours
-  
-  charts.sleep = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Total Sleep (hrs)',
-        data,
-        backgroundColor: '#8b5cf6',
-        borderRadius: 4
-      }, {
-        label: 'Deep Sleep (hrs)',
-        data: deepSleepData,
-        backgroundColor: '#10b981',
-        borderRadius: 4
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#9ca3af' } } },
-      scales: {
-        y: { min: 0, max: 12, grid: { color: '#374151' }, ticks: { color: '#9ca3af' } },
-        x: { grid: { display: false }, ticks: { color: '#9ca3af', maxTicksLimit: 7 } }
-      }
+  try {
+    const ctx = document.getElementById('sleep-chart');
+    if (!ctx) {
+      console.error('DEBUG: sleep-chart canvas element NOT FOUND!');
+      return;
     }
-  });
+    console.log('DEBUG: sleep-chart canvas found');
+    
+    if (charts.sleep) {
+      console.log('DEBUG: Destroying existing sleep chart');
+      charts.sleep.destroy();
+    }
+    
+    if (!sleep || !Array.isArray(sleep) || sleep.length === 0) {
+      console.log('DEBUG: No sleep data available');
+      return;
+    }
+    console.log('DEBUG: Sleep data count:', sleep.length);
+    
+    // Handle both Apple Health format (durationHours, date) and manual format (hours, createdAt)
+    // Map API field names to frontend expected names
+    const sortedSleep = sleep
+      .map(s => {
+        try {
+          return {
+            date: s.date || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : null),
+            hours: s.durationHours !== undefined ? parseFloat(s.durationHours) : 
+                   s.totalHours !== undefined ? parseFloat(s.totalHours) : 
+                   s.sleep_hours !== undefined ? parseFloat(s.sleep_hours) :
+                   s.hours !== undefined ? parseFloat(s.hours) : 0,
+            deepSleep: s.deepSleepMin !== undefined ? parseInt(s.deepSleepMin) : 
+                       s.deepSleepMinutes !== undefined ? parseInt(s.deepSleepMinutes) : 
+                       s.deep_sleep_minutes !== undefined ? parseInt(s.deep_sleep_minutes) : 0
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing sleep record:', s, err);
+          return null;
+        }
+      })
+      .filter(s => s && s.date)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-14);
+    
+    if (sortedSleep.length === 0) {
+      console.log('DEBUG: No valid sleep data after filtering/sorting');
+      return;
+    }
+    console.log('DEBUG: Valid sleep records:', sortedSleep.length);
+    
+    const labels = sortedSleep.map(s => s.date ? s.date.slice(5) : '--'); // MM-DD format
+    const data = sortedSleep.map(s => s.hours || 0);
+    const deepSleepData = sortedSleep.map(s => ((s.deepSleep || 0) / 60).toFixed(1)); // Convert min to hours
+    
+    console.log('DEBUG: Chart labels:', labels);
+    console.log('DEBUG: Chart data (hours):', data);
+    console.log('DEBUG: Chart deep sleep (hours):', deepSleepData);
+    
+    charts.sleep = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Total Sleep (hrs)',
+          data,
+          backgroundColor: '#8b5cf6',
+          borderRadius: 4,
+          borderWidth: 0
+        }, {
+          label: 'Deep Sleep (hrs)',
+          data: deepSleepData,
+          backgroundColor: '#10b981',
+          borderRadius: 4,
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { 
+            labels: { color: '#9ca3af' } 
+          },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb'
+          }
+        },
+        scales: {
+          y: { 
+            min: 0, 
+            max: 12, 
+            grid: { color: '#374151' }, 
+            ticks: { color: '#9ca3af' } 
+          },
+          x: { 
+            grid: { display: false }, 
+            ticks: { color: '#9ca3af', maxTicksLimit: 7 } 
+          }
+        }
+      }
+    });
+    console.log('DEBUG: Sleep chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderSleepChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
+  }
+  
+  console.log('=== DEBUG: renderSleepChart() END ===');
 }
 
 // Log Functions
@@ -2071,86 +2194,142 @@ function renderSleepSummary(sleepData) {
 
 // 14-Day Sleep Duration Bar Chart with Quality Color Coding
 function renderSleepDurationChart(sleepData) {
-  const ctx = document.getElementById('sleep-duration-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderSleepDurationChart() START ===');
   
-  // Destroy existing chart if exists
-  if (charts.sleepDuration) {
-    charts.sleepDuration.destroy();
-  }
-  
-  // Get last 14 days
-  const last14Days = sleepData.slice(-14);
-  
-  // Prepare labels and data
-  const labels = last14Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--');
-  const durations = last14Days.map(d => d.totalHours || d.durationHours || d.duration || 0);
-  
-  // Color code bars based on duration: red < 6h, yellow 6-7h, green > 7h
-  const backgroundColors = durations.map(hours => {
-    if (hours < 6) return '#ef4444'; // red
-    if (hours <= 7) return '#f59e0b'; // yellow/amber
-    return '#10b981'; // green
-  });
-  
-  const borderColors = durations.map(hours => {
-    if (hours < 6) return '#dc2626';
-    if (hours <= 7) return '#d97706';
-    return '#059669';
-  });
-  
-  charts.sleepDuration = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Hours Slept',
-        data: durations,
-        backgroundColor: backgroundColors,
-        borderColor: borderColors,
-        borderWidth: 2,
-        borderRadius: 6,
-        borderSkipped: false
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const hours = context.parsed.y;
-              let quality = hours > 7 ? 'Good' : hours >= 6 ? 'Fair' : 'Poor';
-              return `${hours ? hours.toFixed(1) : '--'} hours (${quality})`;
+  try {
+    const ctx = document.getElementById('sleep-duration-chart');
+    if (!ctx) {
+      console.error('DEBUG: sleep-duration-chart canvas element NOT FOUND!');
+      return;
+    }
+    console.log('DEBUG: sleep-duration-chart canvas found');
+    
+    // Destroy existing chart if exists
+    if (charts.sleepDuration) {
+      console.log('DEBUG: Destroying existing sleepDuration chart');
+      charts.sleepDuration.destroy();
+      charts.sleepDuration = null;
+    }
+    
+    if (!sleepData || !Array.isArray(sleepData) || sleepData.length === 0) {
+      console.log('DEBUG: No sleep data for duration chart');
+      return;
+    }
+    console.log('DEBUG: Sleep data count:', sleepData.length);
+    
+    // Get last 14 days and parse data properly
+    const last14Days = sleepData
+      .map(d => {
+        try {
+          return {
+            date: d.date,
+            totalHours: d.totalHours !== undefined ? parseFloat(d.totalHours) :
+                       d.durationHours !== undefined ? parseFloat(d.durationHours) :
+                       d.sleep_hours !== undefined ? parseFloat(d.sleep_hours) :
+                       d.duration !== undefined ? parseFloat(d.duration) : 0
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing sleep record:', d, err);
+          return null;
+        }
+      })
+      .filter(d => d && d.date)
+      .slice(-14);
+    
+    if (last14Days.length === 0) {
+      console.log('DEBUG: No valid sleep data after filtering');
+      return;
+    }
+    console.log('DEBUG: Valid sleep records:', last14Days.length);
+    
+    // Prepare labels and data
+    const labels = last14Days.map(d => {
+      try {
+        return new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch (err) {
+        return '--';
+      }
+    });
+    const durations = last14Days.map(d => d.totalHours || 0);
+    
+    console.log('DEBUG: Chart labels:', labels);
+    console.log('DEBUG: Chart durations:', durations);
+    
+    // Color code bars based on duration: red < 6h, yellow 6-7h, green > 7h
+    const backgroundColors = durations.map(hours => {
+      if (hours < 6) return '#ef4444'; // red
+      if (hours <= 7) return '#f59e0b'; // yellow/amber
+      return '#10b981'; // green
+    });
+    
+    const borderColors = durations.map(hours => {
+      if (hours < 6) return '#dc2626';
+      if (hours <= 7) return '#d97706';
+      return '#059669';
+    });
+    
+    charts.sleepDuration = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Hours Slept',
+          data: durations,
+          backgroundColor: backgroundColors,
+          borderColor: borderColors,
+          borderWidth: 2,
+          borderRadius: 6,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb',
+            callbacks: {
+              label: function(context) {
+                const hours = context.parsed.y;
+                let quality = hours > 7 ? 'Good' : hours >= 6 ? 'Fair' : 'Poor';
+                return `${hours ? hours.toFixed(1) : '--'} hours (${quality})`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 12,
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' },
+            title: {
+              display: true,
+              text: 'Hours',
+              color: '#9ca3af'
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { 
+              color: '#9ca3af',
+              maxRotation: 45,
+              minRotation: 45
             }
           }
         }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          max: 12,
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' },
-          title: {
-            display: true,
-            text: 'Hours',
-            color: '#9ca3af'
-          }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { 
-            color: '#9ca3af',
-            maxRotation: 45,
-            minRotation: 45
-          }
-        }
       }
-    }
-  });
+    });
+    console.log('DEBUG: Sleep duration chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderSleepDurationChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
+  }
+  
+  console.log('=== DEBUG: renderSleepDurationChart() END ===');
 }
 
 // Deep Sleep Trend Line Chart with HRV Correlation
