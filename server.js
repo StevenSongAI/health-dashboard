@@ -7,11 +7,17 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// PostgreSQL connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+// PostgreSQL connection - lazy initialization
+let pool = null;
+function getPool() {
+  if (!pool && process.env.DATABASE_URL) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    });
+  }
+  return pool;
+}
 
 // Middleware
 app.use(cors());
@@ -21,7 +27,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize database tables
 async function initDatabase() {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS symptoms (
@@ -96,11 +102,11 @@ initDatabase().catch(err => console.error('DB init failed:', err.message));
 // --- Overview ---
 app.get('/api/overview', async (req, res) => {
   try {
-    const protocolResult = await pool.query('SELECT data FROM protocol_data ORDER BY updated_at DESC LIMIT 1');
+    const protocolResult = await getPool().query('SELECT data FROM protocol_data ORDER BY updated_at DESC LIMIT 1');
     const protocol = protocolResult.rows[0]?.data || { supplements: [], phase: {} };
     
     const today = new Date().toISOString().split('T')[0];
-    const symptomsResult = await pool.query('SELECT * FROM symptoms WHERE date = $1', [today]);
+    const symptomsResult = await getPool().query('SELECT * FROM symptoms WHERE date = $1', [today]);
     
     res.json({
       protocol,
@@ -122,7 +128,7 @@ app.get('/api/overview', async (req, res) => {
 // --- Protocol ---
 app.get('/api/protocol', async (req, res) => {
   try {
-    const result = await pool.query('SELECT data FROM protocol_data ORDER BY updated_at DESC LIMIT 1');
+    const result = await getPool().query('SELECT data FROM protocol_data ORDER BY updated_at DESC LIMIT 1');
     res.json(result.rows[0]?.data || { supplements: [], phase: {} });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -131,7 +137,7 @@ app.get('/api/protocol', async (req, res) => {
 
 app.post('/api/protocol', async (req, res) => {
   try {
-    await pool.query('INSERT INTO protocol_data (data) VALUES ($1)', [JSON.stringify(req.body)]);
+    await getPool().query('INSERT INTO protocol_data (data) VALUES ($1)', [JSON.stringify(req.body)]);
     res.json(req.body);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -141,7 +147,7 @@ app.post('/api/protocol', async (req, res) => {
 // --- Symptoms ---
 app.get('/api/symptoms', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM symptoms ORDER BY created_at DESC');
+    const result = await getPool().query('SELECT * FROM symptoms ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -151,7 +157,7 @@ app.get('/api/symptoms', async (req, res) => {
 app.post('/api/symptoms', async (req, res) => {
   try {
     const { date, time, type, severity, hrvValue, hrvBaseline, rhr, symptoms, notes, source } = req.body;
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO symptoms (date, time, type, severity, hrv_value, hrv_baseline, rhr, symptoms, notes, source) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [date, time, type, severity, hrvValue, hrvBaseline, rhr, symptoms, notes, source]
@@ -166,7 +172,7 @@ app.post('/api/symptoms', async (req, res) => {
 // --- Briefings ---
 app.get('/api/briefings', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM briefings ORDER BY created_at DESC');
+    const result = await getPool().query('SELECT * FROM briefings ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -176,7 +182,7 @@ app.get('/api/briefings', async (req, res) => {
 app.post('/api/briefings', async (req, res) => {
   try {
     const { type, date, content, insight, newFinding, findingTopic, priorities, reminders } = req.body;
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO briefings (type, date, content, insight, new_finding, finding_topic, priorities, reminders) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [type, date, content, insight, newFinding, findingTopic, priorities, reminders]
@@ -191,7 +197,7 @@ app.post('/api/briefings', async (req, res) => {
 // --- Research ---
 app.get('/api/research', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM research ORDER BY created_at DESC');
+    const result = await getPool().query('SELECT * FROM research ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -201,7 +207,7 @@ app.get('/api/research', async (req, res) => {
 app.post('/api/research', async (req, res) => {
   try {
     const { title, category, tags, summary, keyFindings, source, confidence, actionable, dateAdded, relevance } = req.body;
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO research (title, category, tags, summary, key_findings, source, confidence, actionable, date_added, relevance) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [title, category, tags, summary, keyFindings, source, confidence, actionable, dateAdded, relevance]
@@ -216,7 +222,7 @@ app.post('/api/research', async (req, res) => {
 // --- Vitals ---
 app.get('/api/vitals', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM symptoms WHERE type IN ($1, $2) ORDER BY created_at DESC', ['hrv', 'sleep']);
+    const result = await getPool().query('SELECT * FROM symptoms WHERE type IN ($1, $2) ORDER BY created_at DESC', ['hrv', 'sleep']);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
