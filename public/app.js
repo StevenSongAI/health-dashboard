@@ -156,8 +156,13 @@ async function checkAlerts() {
   if (sleep && Array.isArray(sleep)) {
     sleep = sleep.map(s => ({
       ...s,
-      totalHours: s.totalHours !== undefined ? s.totalHours : s.durationHours !== undefined ? s.durationHours : s.duration || 0,
-      deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : s.deepSleepMin !== undefined ? s.deepSleepMin : 0,
+      totalHours: s.totalHours !== undefined ? s.totalHours : 
+                  s.durationHours !== undefined ? s.durationHours : 
+                  s.sleep_hours !== undefined ? parseFloat(s.sleep_hours) : 
+                  s.duration || 0,
+      deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : 
+                        s.deepSleepMin !== undefined ? s.deepSleepMin : 
+                        s.deep_sleep_minutes !== undefined ? s.deep_sleep_minutes : 0,
       date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : null)
     }));
   }
@@ -1229,8 +1234,13 @@ function renderSleepChart(sleep) {
   const sortedSleep = sleep
     .map(s => ({
       date: s.date || (s.createdAt ? new Date(s.createdAt).toISOString().split('T')[0] : null),
-      hours: s.durationHours !== undefined ? s.durationHours : s.totalHours !== undefined ? s.totalHours : s.hours || 0,
-      deepSleep: s.deepSleepMin !== undefined ? s.deepSleepMin : s.deepSleepMinutes || 0
+      hours: s.durationHours !== undefined ? s.durationHours : 
+             s.totalHours !== undefined ? s.totalHours : 
+             s.sleep_hours !== undefined ? parseFloat(s.sleep_hours) :
+             s.hours || 0,
+      deepSleep: s.deepSleepMin !== undefined ? s.deepSleepMin : 
+                 s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : 
+                 s.deep_sleep_minutes !== undefined ? s.deep_sleep_minutes : 0
     }))
     .filter(s => s.date)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -2581,9 +2591,14 @@ function updateSleepCard(sleep) {
   
   // Get latest sleep entry - map API field names
   const latest = sleep[sleep.length - 1];
-  const hours = latest.totalHours !== undefined ? latest.totalHours : latest.durationHours !== undefined ? latest.durationHours : latest.duration || 0;
-  const quality = latest.quality || 0;
-  const deepMin = latest.deepSleepMinutes !== undefined ? latest.deepSleepMinutes : latest.deepSleepMin || 0;
+  const hours = latest.totalHours !== undefined ? latest.totalHours : 
+                latest.durationHours !== undefined ? latest.durationHours : 
+                latest.sleep_hours !== undefined ? parseFloat(latest.sleep_hours) :
+                latest.duration || 0;
+  const quality = latest.quality !== undefined ? latest.quality : latest.sleep_quality || 0;
+  const deepMin = latest.deepSleepMinutes !== undefined ? latest.deepSleepMinutes : 
+                  latest.deepSleepMin !== undefined ? latest.deepSleepMin : 
+                  latest.deep_sleep_minutes !== undefined ? latest.deep_sleep_minutes : 0;
   
   durationEl.textContent = hours ? hours.toFixed(1) : '--';
   scoreEl.textContent = quality || '--';
