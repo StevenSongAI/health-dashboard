@@ -226,7 +226,11 @@ app.post('/api/research', async (req, res) => {
 // --- Vitals ---
 app.get('/api/vitals', async (req, res) => {
   try {
-    const result = await getPool().query('SELECT * FROM symptoms WHERE type IN ($1, $2) ORDER BY created_at DESC', ['hrv', 'sleep']);
+    const dbPool = getPool();
+    if (!dbPool) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+    const result = await dbPool.query('SELECT * FROM symptoms WHERE type IN ($1, $2) ORDER BY created_at DESC', ['hrv', 'sleep']);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -234,8 +238,18 @@ app.get('/api/vitals', async (req, res) => {
 });
 
 // Health check - MUST be before catch-all
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', database: 'connected' });
+app.get('/health', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    if (dbPool) {
+      await dbPool.query('SELECT 1');
+      res.json({ status: 'ok', database: 'connected' });
+    } else {
+      res.json({ status: 'ok', database: 'not_configured', message: 'DATABASE_URL not set' });
+    }
+  } catch (err) {
+    res.json({ status: 'ok', database: 'error', error: err.message });
+  }
 });
 
 // Default route - serve index.html for all other routes
