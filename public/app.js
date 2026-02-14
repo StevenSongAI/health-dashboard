@@ -312,16 +312,37 @@ async function loadOverview() {
   // HRV Status Card
   await loadHRVStatus();
   
-  // Protocol card
+  // Protocol card - Add adherence tracking
   const protocolOverview = document.getElementById('protocol-overview');
-  if (data.protocol?.supplements) {
-    protocolOverview.innerHTML = data.protocol.supplements.map(s => `
-      <div class="supplement-card p-3 bg-gray-800 rounded-lg">
-        <div class="font-medium text-accent-blue">${s.name}</div>
-        <div class="text-xs text-gray-400">${s.dosage}</div>
-        <div class="text-xs text-gray-500 mt-1">${s.frequency} • ${s.timing.join(', ')}</div>
+  if (protocolOverview) {
+    protocolOverview.innerHTML = `
+      <!-- Protocol Adherence Section -->
+      <div id="next-dose-container" class="mb-4">
+        <div class="bg-gray-800 rounded-lg p-4 animate-pulse">
+          <div class="h-16 bg-gray-700 rounded"></div>
+        </div>
       </div>
-    `).join('');
+      
+      <div id="protocol-adherence-container" class="mb-4">
+        <div class="bg-gray-800 rounded-lg p-4 animate-pulse">
+          <div class="h-32 bg-gray-700 rounded"></div>
+        </div>
+      </div>
+      
+      <div id="weekly-adherence-container" class="mb-4">
+        <div class="bg-gray-800 rounded-lg p-4 animate-pulse">
+          <div class="h-24 bg-gray-700 rounded"></div>
+        </div>
+      </div>
+      
+      <!-- Refresh button -->
+      <button onclick="refreshProtocolAdherence()" class="w-full py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors flex items-center justify-center gap-2">
+        <span>🔄</span> Refresh Protocol Status
+      </button>
+    `;
+    
+    // Trigger adherence load after DOM update
+    setTimeout(loadProtocolAdherence, 100);
   }
   
   // Alerts - Merge server alerts with automated trend-based alerts
@@ -458,7 +479,7 @@ async function loadHRVStatus() {
   }
 }
 
-// Render Protocol Tab
+// Render Protocol Tab - Enhanced with adherence tracking
 function renderProtocol() {
   if (!protocolData) return;
   
@@ -519,8 +540,34 @@ function renderProtocol() {
     progressBar.insertAdjacentHTML('afterend', `<div class="exit-criteria">${exitCriteriaHtml}</div>`);
   }
   
-  // Schedule timeline
+  // Add adherence tracking section if not present
   const scheduleTimeline = document.getElementById('schedule-timeline');
+  if (scheduleTimeline) {
+    // Check if adherence section already exists
+    let adherenceSection = document.getElementById('protocol-adherence-section');
+    if (!adherenceSection) {
+      adherenceSection = document.createElement('div');
+      adherenceSection.id = 'protocol-adherence-section';
+      adherenceSection.className = 'mt-6';
+      scheduleTimeline.parentElement.insertBefore(adherenceSection, scheduleTimeline);
+    }
+    
+    adherenceSection.innerHTML = `
+      <div class="card p-6 mb-6 border-l-4 border-accent-green">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span>📋</span> Protocol Adherence
+        </h3>
+        <div id="protocol-tab-next-dose"></div>
+        <div id="protocol-tab-adherence-checklist"></div>
+        <div id="protocol-tab-weekly-adherence"></div>
+      </div>
+    `;
+    
+    // Render adherence in protocol tab
+    renderProtocolTabAdherence();
+  }
+  
+  // Schedule timeline
   const scheduleOrder = ['morning_empty_stomach', 'breakfast', 'lunch', 'dinner', 'bedtime'];
   const scheduleLabels = {
     morning_empty_stomach: 'Morning (Empty Stomach)',
@@ -575,6 +622,101 @@ function renderProtocol() {
       ${s.purpose ? `<div class="text-xs text-primary-400 mt-1">${s.purpose}</div>` : ''}
     </div>
   `).join('') || '<p class="text-gray-400">No supplements configured</p>';
+}
+
+// Render adherence tracking in the Protocol tab
+async function renderProtocolTabAdherence() {
+  // Ensure adherence data is loaded
+  if (!adherenceData) {
+    await loadProtocolAdherence();
+    return;
+  }
+  
+  const nextDoseContainer = document.getElementById('protocol-tab-next-dose');
+  const checklistContainer = document.getElementById('protocol-tab-adherence-checklist');
+  const weeklyContainer = document.getElementById('protocol-tab-weekly-adherence');
+  
+  if (nextDoseContainer) {
+    const nextDose = getNextDose();
+    if (nextDose) {
+      const suppNames = nextDose.supplements.map(s => s.name).join(', ');
+      const timeText = nextDose.hours > 0 
+        ? `${nextDose.hours}h ${nextDose.minutes}m` 
+        : `${nextDose.minutes}m`;
+      
+      nextDoseContainer.innerHTML = `
+        <div class="bg-blue-900 bg-opacity-30 rounded-lg p-4 mb-4 border border-blue-700">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-blue-300">Next Dose</div>
+              <div class="text-lg font-bold">${suppNames}</div>
+              <div class="text-sm text-gray-400">${nextDose.label}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-3xl font-mono font-bold text-blue-400">in ${timeText}</div>
+              <div class="text-xs text-gray-500">${nextDose.timeStr}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  if (checklistContainer) {
+    const currentSlot = getCurrentTimeSlot();
+    
+    let html = '<div class="bg-gray-800 rounded-lg p-4 mb-4"><div class="space-y-3">';
+    
+    Object.entries(PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+      const isCurrent = key === currentSlot;
+      const isPassed = hasTimeSlotPassed(key);
+      const slotClass = isCurrent ? 'border-l-4 border-blue-500 bg-gray-700' : 
+                        isPassed ? 'opacity-60' : '';
+      
+      html += `
+        <div class="p-3 rounded-lg ${slotClass}">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium text-sm">${slot.label}</span>
+            <span class="text-xs text-gray-500">${slot.time}</span>
+          </div>
+          <div class="space-y-1">
+      `;
+      
+      slot.supplements.forEach(supp => {
+        const status = getSupplementStatus(key, supp.name);
+        html += `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="${status.class}">${status.icon}</span>
+              <span class="text-sm ${status.class}">${supp.name}</span>
+            </div>
+            ${status.status === 'pending' && !isPassed ? `
+              <button onclick="quickLogSupplement('${key}', '${supp.name}')" 
+                      class="text-xs bg-accent-green text-black px-2 py-1 rounded hover:bg-green-400 transition-colors">
+                Log
+              </button>
+            ` : `<span class="text-xs text-gray-500">${status.status}</span>
+            `}
+          </div>
+        `;
+      });
+      
+      html += '</div></div>';
+    });
+    
+    html += '</div></div>';
+    checklistContainer.innerHTML = html;
+  }
+  
+  if (weeklyContainer) {
+    // Use the same weekly adherence calculation
+    await renderWeeklyAdherence();
+    // Move the weekly container content here
+    const mainWeekly = document.getElementById('weekly-adherence-container');
+    if (mainWeekly) {
+      weeklyContainer.innerHTML = mainWeekly.innerHTML;
+    }
+  }
 }
 
 // Load Symptoms
@@ -2441,4 +2583,480 @@ const originalInit = init;
 init = function() {
   originalInit();
   initStatusWidget();
+  initProtocolAdherence();
 };
+
+// ============================================
+// PROTOCOL ADHERENCE TRACKING
+// ============================================
+
+// Supplement protocol schedule definition
+const PROTOCOL_SCHEDULE = {
+  morning_empty_stomach: {
+    label: 'Morning (Empty Stomach)',
+    time: '07:00',
+    supplements: [{ name: 'Allimax', dosage: '1 cap' }]
+  },
+  breakfast: {
+    label: 'Breakfast',
+    time: '08:00',
+    supplements: [{ name: 'Probiotic', dosage: '1 cap' }]
+  },
+  lunch: {
+    label: 'Lunch',
+    time: '12:00',
+    supplements: [
+      { name: 'Allimax', dosage: '1 cap' },
+      { name: 'Neem', dosage: '1 cap' }
+    ]
+  },
+  dinner: {
+    label: 'Dinner',
+    time: '18:00',
+    supplements: [
+      { name: 'Allimax', dosage: '1 cap' },
+      { name: 'Neem', dosage: '1 cap' }
+    ]
+  },
+  bedtime: {
+    label: 'Bedtime',
+    time: '22:00',
+    supplements: [{ name: 'Allimax', dosage: '1 cap' }]
+  }
+};
+
+// Total expected doses per day for adherence calculation
+const TOTAL_DAILY_DOSES = Object.values(PROTOCOL_SCHEDULE)
+  .reduce((sum, slot) => sum + slot.supplements.length, 0);
+
+let adherenceData = null;
+let adherenceRefreshInterval = null;
+
+// Initialize protocol adherence tracking
+function initProtocolAdherence() {
+  loadProtocolAdherence();
+  // Refresh every 5 minutes to update countdowns and status
+  adherenceRefreshInterval = setInterval(loadProtocolAdherence, 5 * 60 * 1000);
+}
+
+// Load protocol adherence data
+async function loadProtocolAdherence() {
+  try {
+    // Fetch today's supplement logs
+    const today = new Date().toISOString().split('T')[0];
+    const [supplements, symptoms] = await Promise.all([
+      apiGet('/api/supplements'),
+      apiGet('/api/symptoms')
+    ]);
+    
+    // Filter for today's supplement entries
+    const todayLogs = (supplements || []).filter(log => {
+      const logDate = new Date(log.createdAt || log.date).toISOString().split('T')[0];
+      return logDate === today;
+    });
+    
+    // Also check symptoms for supplement type entries
+    const supplementSymptoms = (symptoms || []).filter(s => {
+      const sDate = new Date(s.createdAt || s.date).toISOString().split('T')[0];
+      return sDate === today && s.type === 'supplement';
+    });
+    
+    adherenceData = {
+      todayLogs,
+      supplementSymptoms,
+      timestamp: new Date()
+    };
+    
+    renderProtocolAdherence();
+    renderWeeklyAdherence();
+    renderNextDoseCountdown();
+    
+  } catch (err) {
+    console.error('Protocol adherence load error:', err);
+  }
+}
+
+// Get current time slot based on hour
+function getCurrentTimeSlot() {
+  const hour = new Date().getHours();
+  if (hour < 7) return 'morning_empty_stomach';
+  if (hour < 9) return 'breakfast';
+  if (hour < 13) return 'lunch';
+  if (hour < 19) return 'dinner';
+  return 'bedtime';
+}
+
+// Check if a time slot has passed
+function hasTimeSlotPassed(slotKey) {
+  const slot = PROTOCOL_SCHEDULE[slotKey];
+  const [slotHour, slotMin] = slot.time.split(':').map(Number);
+  const now = new Date();
+  const slotTime = new Date();
+  slotTime.setHours(slotHour, slotMin, 0, 0);
+  // Add 2 hour grace period
+  slotTime.setHours(slotTime.getHours() + 2);
+  return now > slotTime;
+}
+
+// Check if time slot is active (within grace period)
+function isTimeSlotActive(slotKey) {
+  const slot = PROTOCOL_SCHEDULE[slotKey];
+  const [slotHour, slotMin] = slot.time.split(':').map(Number);
+  const now = new Date();
+  const slotTime = new Date();
+  slotTime.setHours(slotHour, slotMin, 0, 0);
+  // Grace period: 1 hour before to 2 hours after
+  const graceStart = new Date(slotTime.getTime() - 60 * 60 * 1000);
+  const graceEnd = new Date(slotTime.getTime() + 2 * 60 * 60 * 1000);
+  return now >= graceStart && now <= graceEnd;
+}
+
+// Check if supplement was logged for a slot
+function isSupplementTaken(slotKey, supplementName) {
+  if (!adherenceData) return false;
+  
+  const { todayLogs, supplementSymptoms } = adherenceData;
+  const slot = PROTOCOL_SCHEDULE[slotKey];
+  
+  // Check supplement logs
+  const taken = todayLogs.some(log => {
+    const logTime = new Date(log.createdAt || log.date);
+    const [slotHour, slotMin] = slot.time.split(':').map(Number);
+    const slotTime = new Date();
+    slotTime.setHours(slotHour, slotMin, 0, 0);
+    
+    // Within 3 hours of scheduled time
+    const timeDiff = Math.abs(logTime - slotTime) / (1000 * 60 * 60);
+    const nameMatch = log.name?.toLowerCase().includes(supplementName.toLowerCase()) ||
+                     (supplementName === 'Allimax' && log.name?.toLowerCase().includes('allimax')) ||
+                     (supplementName === 'Neem' && log.name?.toLowerCase().includes('neem')) ||
+                     (supplementName === 'Probiotic' && log.name?.toLowerCase().includes('probiotic'));
+    
+    return nameMatch && timeDiff < 3;
+  });
+  
+  if (taken) return true;
+  
+  // Check symptom logs for supplement type
+  return supplementSymptoms.some(s => {
+    const sTime = new Date(s.createdAt || s.date);
+    const [slotHour, slotMin] = slot.time.split(':').map(Number);
+    const slotTime = new Date();
+    slotTime.setHours(slotHour, slotMin, 0, 0);
+    
+    const timeDiff = Math.abs(sTime - slotTime) / (1000 * 60 * 60);
+    const notesMatch = s.notes?.toLowerCase().includes(supplementName.toLowerCase()) ||
+                      (supplementName === 'Allimax' && s.notes?.toLowerCase().includes('allimax')) ||
+                      (supplementName === 'Neem' && s.notes?.toLowerCase().includes('neem')) ||
+                      (supplementName === 'Probiotic' && s.notes?.toLowerCase().includes('probiotic'));
+    
+    return notesMatch && timeDiff < 3;
+  });
+}
+
+// Get adherence status for a supplement in a slot
+function getSupplementStatus(slotKey, supplementName) {
+  const taken = isSupplementTaken(slotKey, supplementName);
+  const passed = hasTimeSlotPassed(slotKey);
+  
+  if (taken) {
+    return { status: 'taken', icon: '✅', class: 'text-green-500' };
+  } else if (passed) {
+    return { status: 'missed', icon: '❌', class: 'text-red-500' };
+  } else {
+    return { status: 'pending', icon: '⚪', class: 'text-gray-400' };
+  }
+}
+
+// Render protocol adherence checklist
+function renderProtocolAdherence() {
+  const container = document.getElementById('protocol-adherence-container');
+  if (!container) return;
+  
+  const currentSlot = getCurrentTimeSlot();
+  
+  let html = `
+    <div class="bg-gray-800 rounded-lg p-4 mb-4">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-semibold text-lg text-white">Today's Protocol</h3>
+        <span class="text-xs text-gray-400">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
+      </div>
+      <div class="space-y-3">
+  `;
+  
+  Object.entries(PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+    const isCurrent = key === currentSlot;
+    const isPassed = hasTimeSlotPassed(key);
+    const slotClass = isCurrent ? 'border-l-4 border-blue-500 bg-gray-700' : 
+                      isPassed ? 'opacity-75' : '';
+    
+    html += `
+      <div class="p-3 rounded-lg ${slotClass} transition-all">
+        <div class="flex justify-between items-center mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-200">${slot.label}</span>
+            <span class="text-xs text-gray-500">~${slot.time}</span>
+          </div>
+          ${isCurrent ? '<span class="text-xs bg-blue-600 px-2 py-0.5 rounded-full text-white">NOW</span>' : ''}
+        </div>
+        <div class="space-y-1 ml-2">
+    `;
+    
+    slot.supplements.forEach(supp => {
+      const status = getSupplementStatus(key, supp.name);
+      html += `
+        <div class="flex items-center justify-between py-1">
+          <div class="flex items-center gap-3">
+            <span class="text-lg">${status.icon}</span>
+            <span class="text-sm ${status.class}">${supp.name} <span class="text-gray-500">(${supp.dosage})</span></span>
+          </div>
+          <span class="text-xs text-gray-500 capitalize">${status.status}</span>
+        </div>
+      `;
+    });
+    
+    html += '</div></div>';
+  });
+  
+  html += '</div></div>';
+  
+  container.innerHTML = html;
+}
+
+// Calculate and render weekly adherence
+async function renderWeeklyAdherence() {
+  const container = document.getElementById('weekly-adherence-container');
+  if (!container) return;
+  
+  try {
+    // Fetch last 7 days of logs
+    const [supplements, symptoms] = await Promise.all([
+      apiGet('/api/supplements'),
+      apiGet('/api/symptoms')
+    ]);
+    
+    const today = new Date();
+    const weekData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      // Count doses for this day
+      const dayLogs = (supplements || []).filter(log => {
+        const logDate = new Date(log.createdAt || log.date).toISOString().split('T')[0];
+        return logDate === dateStr;
+      });
+      
+      const daySupplementSymptoms = (symptoms || []).filter(s => {
+        const sDate = new Date(s.createdAt || s.date).toISOString().split('T')[0];
+        return sDate === dateStr && s.type === 'supplement';
+      });
+      
+      const totalLogged = dayLogs.length + daySupplementSymptoms.length;
+      // Estimate: count unique supplement types logged
+      const uniqueSupps = new Set([
+        ...dayLogs.map(l => l.name?.toLowerCase()),
+        ...daySupplementSymptoms.map(s => s.notes?.toLowerCase())
+      ]).size;
+      
+      weekData.push({
+        date: date,
+        dateStr: dateStr,
+        taken: Math.min(uniqueSupps, TOTAL_DAILY_DOSES),
+        total: TOTAL_DAILY_DOSES,
+        percentage: Math.round((Math.min(uniqueSupps, TOTAL_DAILY_DOSES) / TOTAL_DAILY_DOSES) * 100)
+      });
+    }
+    
+    // Calculate overall weekly adherence
+    const totalTaken = weekData.reduce((sum, d) => sum + d.taken, 0);
+    const totalExpected = weekData.length * TOTAL_DAILY_DOSES;
+    const weeklyPercentage = Math.round((totalTaken / totalExpected) * 100);
+    
+    // Determine color based on percentage
+    let adherenceColor = 'text-red-400';
+    let adherenceBg = 'bg-red-900';
+    if (weeklyPercentage >= 90) {
+      adherenceColor = 'text-green-400';
+      adherenceBg = 'bg-green-900';
+    } else if (weeklyPercentage >= 70) {
+      adherenceColor = 'text-yellow-400';
+      adherenceBg = 'bg-yellow-900';
+    }
+    
+    let html = `
+      <div class="bg-gray-800 rounded-lg p-4">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-semibold text-white">Weekly Adherence</h3>
+          <span class="text-2xl font-bold ${adherenceColor}">${weeklyPercentage}%</span>
+        </div>
+        
+        <!-- Progress bar -->
+        <div class="w-full bg-gray-700 rounded-full h-3 mb-4">
+          <div class="${adherenceBg} h-3 rounded-full transition-all duration-500" style="width: ${weeklyPercentage}%"></div>
+        </div>
+        
+        <!-- Daily breakdown -->
+        <div class="flex justify-between items-end h-16 gap-1">
+    `;
+    
+    weekData.forEach(day => {
+      const barColor = day.percentage >= 80 ? 'bg-green-500' : 
+                       day.percentage >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+      const dayLabel = day.date.toLocaleDateString('en-US', { weekday: 'narrow' });
+      
+      html += `
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full ${barColor} rounded-t transition-all duration-300" style="height: ${Math.max(20, day.percentage)}%"></div>
+          <span class="text-xs text-gray-400">${dayLabel}</span>
+        </div>
+      `;
+    });
+    
+    html += `
+        </div>
+        <div class="mt-3 text-center text-sm text-gray-400">
+          ${totalTaken} of ${totalExpected} doses taken this week
+        </div>
+      </div>
+    `;
+    
+    container.innerHTML = html;
+    
+  } catch (err) {
+    console.error('Weekly adherence render error:', err);
+    container.innerHTML = `
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-center">Unable to load adherence data</p>
+      </div>
+    `;
+  }
+}
+
+// Find next scheduled dose
+function getNextDose() {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMin = now.getMinutes();
+  
+  const slotOrder = ['morning_empty_stomach', 'breakfast', 'lunch', 'dinner', 'bedtime'];
+  
+  for (const slotKey of slotOrder) {
+    const slot = PROTOCOL_SCHEDULE[slotKey];
+    const [slotHour, slotMin] = slot.time.split(':').map(Number);
+    
+    // Check if any supplement in this slot is not yet taken
+    const hasPendingSupp = slot.supplements.some(supp => {
+      const status = getSupplementStatus(slotKey, supp.name);
+      return status.status === 'pending';
+    });
+    
+    if (hasPendingSupp) {
+      const slotTime = new Date();
+      slotTime.setHours(slotHour, slotMin, 0, 0);
+      
+      // If this slot is in the future
+      if (slotTime > now) {
+        const diffMs = slotTime - now;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        return {
+          slot: slotKey,
+          label: slot.label,
+          supplements: slot.supplements.filter(s => getSupplementStatus(slotKey, s.name).status === 'pending'),
+          hours: diffHours,
+          minutes: diffMins,
+          timeStr: slot.time
+        };
+      }
+    }
+  }
+  
+  // All doses for today are taken or missed - show tomorrow's first dose
+  const tomorrowFirst = PROTOCOL_SCHEDULE['morning_empty_stomach'];
+  const tomorrowTime = new Date();
+  tomorrowTime.setDate(tomorrowTime.getDate() + 1);
+  tomorrowTime.setHours(7, 0, 0, 0);
+  
+  const diffMs = tomorrowTime - now;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  return {
+    slot: 'morning_empty_stomach',
+    label: 'Tomorrow Morning',
+    supplements: tomorrowFirst.supplements,
+    hours: diffHours,
+    minutes: diffMins,
+    timeStr: '07:00',
+    isTomorrow: true
+  };
+}
+
+// Render next dose countdown
+function renderNextDoseCountdown() {
+  const container = document.getElementById('next-dose-container');
+  if (!container) return;
+  
+  const nextDose = getNextDose();
+  if (!nextDose) {
+    container.innerHTML = `
+      <div class="bg-gray-800 rounded-lg p-4">
+        <p class="text-gray-400 text-center">All doses complete for today! 🎉</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const suppNames = nextDose.supplements.map(s => s.name).join(', ');
+  const timeText = nextDose.hours > 0 
+    ? `${nextDose.hours}h ${nextDose.minutes}m` 
+    : `${nextDose.minutes}m`;
+  
+  container.innerHTML = `
+    <div class="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-lg p-4 border border-blue-700">
+      <div class="flex justify-between items-start mb-2">
+        <h3 class="font-semibold text-blue-200">Next Dose</h3>
+        <span class="text-xs bg-blue-700 px-2 py-0.5 rounded text-blue-100">${nextDose.timeStr}</span>
+      </div>
+      <div class="text-lg font-bold text-white mb-1">${suppNames}</div>
+      <div class="text-sm text-blue-300">${nextDose.label}</div>
+      <div class="mt-3 flex items-center gap-2">
+        <span class="text-2xl">⏰</span>
+        <span class="text-xl font-mono font-bold text-white">in ${timeText}</span>
+      </div>
+      ${nextDose.isTomorrow ? '<div class="mt-2 text-xs text-blue-400">Tomorrow morning</div>' : ''}
+    </div>
+  `;
+}
+
+// Quick log supplement function
+async function quickLogSupplement(slotKey, supplementName) {
+  try {
+    const data = {
+      name: supplementName,
+      dosage: PROTOCOL_SCHEDULE[slotKey].supplements.find(s => s.name === supplementName)?.dosage || '1 cap',
+      time: new Date().toTimeString().slice(0, 5),
+      date: new Date().toISOString().split('T')[0],
+      taken: true
+    };
+    
+    await apiPost('/api/supplements', data);
+    showToast(`${supplementName} logged! ✅`);
+    
+    // Refresh adherence display
+    await loadProtocolAdherence();
+    
+  } catch (err) {
+    console.error('Quick log error:', err);
+    showToast('Failed to log supplement');
+  }
+}
+
+// Refresh adherence on demand
+function refreshProtocolAdherence() {
+  loadProtocolAdherence();
+}
