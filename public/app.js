@@ -2867,17 +2867,6 @@ function renderHRVTrendChart(vitals) {
         }
       }
     });
-            },
-            title: {
-              display: true,
-              text: 'Date',
-              color: '#6b7280',
-              font: { size: 11 }
-            }
-          }
-        }
-      }
-    });
     console.log('DEBUG: HRV trend chart created successfully');
   } catch (err) {
     console.error('DEBUG: Error in renderHRVTrendChart():', err);
