@@ -142,6 +142,9 @@ async function loadOverview() {
   document.getElementById('today-supps').textContent = `${data.todayStatus?.supplementsTaken || 0}/6`;
   document.getElementById('today-symptoms').textContent = data.todayStatus?.symptomsLogged || 0;
   
+  // HRV Status Card
+  await loadHRVStatus();
+  
   // Protocol card
   const protocolOverview = document.getElementById('protocol-overview');
   if (data.protocol?.supplements) {
@@ -170,6 +173,80 @@ async function loadOverview() {
     `).join('');
   } else {
     alertsList.innerHTML = '<p class="text-gray-400">No active alerts</p>';
+  }
+}
+
+// Load HRV Status for Overview
+async function loadHRVStatus() {
+  try {
+    const response = await fetch('/api/symptoms');
+    const symptoms = await response.json();
+    
+    // Find latest HRV entry
+    const hrvEntry = symptoms.reverse().find(s => s.type === 'hrv');
+    const sleepEntry = symptoms.reverse().find(s => s.type === 'sleep');
+    
+    if (!hrvEntry) {
+      document.getElementById('hrv-current').textContent = '--';
+      document.getElementById('hrv-status').textContent = 'No data';
+      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      return;
+    }
+    
+    const hrv = hrvEntry.hrvValue;
+    const baseline = hrvEntry.hrvBaseline || 61;
+    const diff = hrv - baseline;
+    const diffPercent = ((diff / baseline) * 100).toFixed(0);
+    
+    // Update HRV display
+    document.getElementById('hrv-current').textContent = `${hrv}ms`;
+    document.getElementById('hrv-trend').textContent = `${diff >= 0 ? '+' : ''}${diff}ms (${diffPercent}%) vs baseline`;
+    
+    // Color code
+    const hrvElement = document.getElementById('hrv-current');
+    if (diff < -10) {
+      hrvElement.className = 'text-3xl font-bold text-accent-red';
+    } else if (diff < 0) {
+      hrvElement.className = 'text-3xl font-bold text-accent-yellow';
+    } else {
+      hrvElement.className = 'text-3xl font-bold text-accent-green';
+    }
+    
+    // Status and recommendation
+    let status, recommendation, cardBorder;
+    if (hrv < baseline - 10) {
+      status = '🔴 CRITICAL - Below Baseline';
+      recommendation = 'REDUCE Allimax to 1-cap today. Prioritize sleep. No training.';
+      cardBorder = 'border-accent-red';
+    } else if (hrv < baseline - 5) {
+      status = '🟡 ELEVATED - Monitor Closely';
+      recommendation = 'Consider reducing Allimax dose. Focus on recovery.';
+      cardBorder = 'border-accent-yellow';
+    } else if (hrv > baseline + 20) {
+      status = '🟢 OPTIMAL - High Recovery';
+      recommendation = 'Good recovery capacity. Protocol on track.';
+      cardBorder = 'border-accent-green';
+    } else {
+      status = '🟢 NORMAL';
+      recommendation = 'Maintain current protocol. Continue monitoring.';
+      cardBorder = 'border-accent-green';
+    }
+    
+    document.getElementById('hrv-status').textContent = status;
+    document.getElementById('hrv-recommendation').textContent = recommendation;
+    
+    // Update card border
+    const card = document.getElementById('hrv-status-card');
+    card.className = `card p-6 mb-6 border-l-4 ${cardBorder}`;
+    
+    // Deep sleep info
+    if (sleepEntry && sleepEntry.deepSleep) {
+      document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${sleepEntry.deepSleep}`;
+    }
+    
+  } catch (error) {
+    console.error('Error loading HRV status:', error);
+    document.getElementById('hrv-status').textContent = 'Error loading data';
   }
 }
 

@@ -135,6 +135,29 @@
           </div>
         </div>
 
+        <!-- HRV Status Card -->
+        <div class="card p-6 mb-6 border-l-4" id="hrv-status-card">
+          <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span class="text-accent-purple">💓</span> HRV Status
+          </h3>
+          <div class="grid md:grid-cols-3 gap-4">
+            <div>
+              <p class="text-xs text-gray-400 uppercase">Current HRV</p>
+              <p class="text-3xl font-bold" id="hrv-current">--</p>
+              <p class="text-xs text-gray-400" id="hrv-trend">vs baseline</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 uppercase">Status</p>
+              <p class="text-lg font-semibold" id="hrv-status">Loading...</p>
+              <p class="text-xs text-gray-400" id="hrv-deep-sleep">Deep sleep: --</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-400 uppercase">Recommendation</p>
+              <p class="text-sm" id="hrv-recommendation">Loading...</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Protocol Card -->
         <div class="card p-6 mb-6">
           <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
