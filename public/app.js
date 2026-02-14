@@ -2090,6 +2090,58 @@ async function loadSleep() {
         date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
       }));
       console.log('DEBUG: Mapped sleep sample:', sleepData[0]);
+      
+      // DEDUPLICATE: Group by date and prefer Apple Health data
+      console.log('DEBUG: Deduplicating sleep data...');
+      console.log('DEBUG: Before deduplication:', sleepData.length, 'records');
+      
+      const sleepByDate = new Map();
+      
+      for (const record of sleepData) {
+        if (!record.date) continue;
+        
+        const existing = sleepByDate.get(record.date);
+        
+        if (!existing) {
+          // First record for this date
+          sleepByDate.set(record.date, record);
+        } else {
+          // Compare and keep the better record
+          // Score each record - higher is better
+          const scoreRecord = (r) => {
+            let score = 0;
+            // Apple Health data has these complete fields
+            if (r.totalHours && r.totalHours > 0) score += 10;
+            if (r.deepSleepMinutes && r.deepSleepMinutes > 0) score += 5;
+            if (r.remMinutes && r.remMinutes > 0) score += 5;
+            if (r.coreMinutes && r.coreMinutes > 0) score += 3;
+            if (r.awakeMinutes && r.awakeMinutes > 0) score += 2;
+            if (r.quality && r.quality > 0) score += 1;
+            // Prefer records with source='apple_health' or similar
+            if (r.source && r.source.toLowerCase().includes('apple')) score += 20;
+            if (r.source && r.source.toLowerCase().includes('health')) score += 10;
+            return score;
+          };
+          
+          const existingScore = scoreRecord(existing);
+          const newScore = scoreRecord(record);
+          
+          console.log(`DEBUG: Date ${record.date} - Existing score: ${existingScore}, New score: ${newScore}`);
+          
+          if (newScore > existingScore) {
+            console.log(`DEBUG: Replacing record for ${record.date} with better data`);
+            sleepByDate.set(record.date, record);
+          }
+        }
+      }
+      
+      // Convert map back to array and sort by date descending
+      sleepData = Array.from(sleepByDate.values()).sort((a, b) => {
+        return new Date(b.date) - new Date(a.date);
+      });
+      
+      console.log('DEBUG: After deduplication:', sleepData.length, 'records');
+      console.log('DEBUG: Deduplicated dates:', sleepData.map(s => s.date).slice(0, 10));
     }
     
     if (sleepData && sleepData.length > 0) {
@@ -2926,13 +2978,21 @@ function renderSleepHRVChart(sleepData, vitalsData) {
 }
 
 function renderSleepHistoryTable(sleepData) {
+  console.log('=== DEBUG: renderSleepHistoryTable() START ===');
   const tbody = document.getElementById('sleep-history-table');
   
-  if (!tbody) return;
+  if (!tbody) {
+    console.log('DEBUG: sleep-history-table element NOT FOUND!');
+    return;
+  }
   
-  const sortedData = [...sleepData].reverse(); // Most recent first
+  console.log('DEBUG: Rendering', sleepData.length, 'sleep records');
+  console.log('DEBUG: First few records:', sleepData.slice(0, 3).map(s => ({ date: s.date, totalHours: s.totalHours, deepSleepMinutes: s.deepSleepMinutes })));
   
-  tbody.innerHTML = sortedData.map(sleep => {
+  // Data is already sorted by date descending from loadSleep()
+  // No need to reverse again
+  
+  tbody.innerHTML = sleepData.map(sleep => {
     const deepMin = sleep.deepSleepMinutes || sleep.deepSleepMin || 0;
     const totalHours = sleep.totalHours || sleep.durationHours || sleep.duration || 0;
     const remMin = sleep.remMinutes || sleep.remMin || 0;
@@ -2954,6 +3014,8 @@ function renderSleepHistoryTable(sleepData) {
       </tr>
     `;
   }).join('');
+  
+  console.log('=== DEBUG: renderSleepHistoryTable() END ===');
 }
 
 // Initialize on load
