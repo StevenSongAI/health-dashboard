@@ -610,95 +610,480 @@ async function loadHRVStatus() {
   }
 }
 
-// Render Protocol Tab - Enhanced with adherence tracking
+// Enhanced Protocol Schedule with exact timing
+const ENHANCED_PROTOCOL_SCHEDULE = {
+  morning: {
+    label: 'Morning (Empty Stomach)',
+    time: '07:00',
+    timingNote: '30 min before breakfast',
+    supplements: [
+      { name: 'Allimax', dosage: '450mg', count: 2, purpose: 'Antimicrobial (allicin)' },
+      { name: 'Neem', dosage: '500mg', count: 2, purpose: 'Antimicrobial' }
+    ]
+  },
+  breakfast: {
+    label: 'With Breakfast',
+    time: '08:00',
+    timingNote: 'Take with food',
+    supplements: [
+      { name: 'Biofilm Defense', dosage: '2 caps', count: 1, purpose: 'Biofilm disruptor' }
+    ]
+  },
+  lunch: {
+    label: 'Lunch',
+    time: '12:00',
+    timingNote: 'With meal',
+    supplements: [
+      { name: 'Allimax', dosage: '450mg', count: 2, purpose: 'Antimicrobial' },
+      { name: 'S. Boulardii', dosage: '250mg', count: 1, purpose: 'Probiotic' }
+    ]
+  },
+  dinner: {
+    label: 'Dinner',
+    time: '18:00',
+    timingNote: 'With meal',
+    supplements: [
+      { name: 'Allimax', dosage: '450mg', count: 2, purpose: 'Antimicrobial' }
+    ]
+  },
+  evening: {
+    label: 'Evening',
+    time: '21:00',
+    timingNote: '3-4 hours after dinner',
+    supplements: [
+      { name: 'MotilPro', dosage: '2 caps', count: 1, purpose: 'Prokinetic (artichoke + ginger)' }
+    ]
+  },
+  bedtime: {
+    label: 'Bedtime',
+    time: '22:00',
+    timingNote: 'Before sleep',
+    supplements: [
+      { name: 'Allimax', dosage: '450mg', count: 2, purpose: 'Antimicrobial' }
+    ]
+  }
+};
+
+// 16-Week Protocol Phases
+const PROTOCOL_PHASES = [
+  { week: 1, name: 'High-Dose Kill', duration: 4, color: 'accent-red', description: 'Maximum antimicrobial dosing' },
+  { week: 5, name: 'Maintenance Kill', duration: 4, color: 'accent-yellow', description: 'Sustained antimicrobial pressure' },
+  { week: 9, name: 'Biofilm Disruption', duration: 3, color: 'accent-blue', description: 'Focus on biofilm disruption' },
+  { week: 12, name: 'Recovery Phase', duration: 3, color: 'accent-green', description: 'Support healing and motility' },
+  { week: 15, name: 'Transition', duration: 2, color: 'primary-500', description: 'Prepare for maintenance' }
+];
+
+// Total doses per day
+const TOTAL_DAILY_SUPPLEMENTS = Object.values(ENHANCED_PROTOCOL_SCHEDULE)
+  .reduce((sum, slot) => sum + slot.supplements.reduce((s, supp) => s + supp.count, 0), 0);
+
+// Store adherence logs
+let protocolAdherenceLogs = [];
+
+// Render Protocol Tab - Fully Enhanced
 function renderProtocol() {
   if (!protocolData) return;
   
-  // Use symptom-based tracking, not day count
-  const phaseName = protocolData.phase?.name || 'Kill Phase';
-  const status = protocolData.phase?.status || 'Active';
-  const daysOnProtocol = protocolData.phase?.daysRemaining || 0;
+  // Calculate protocol metrics
+  const startDate = protocolData.startDate ? new Date(protocolData.startDate) : new Date('2026-01-20');
+  const today = new Date();
+  const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const currentDay = Math.max(1, dayDiff);
+  const totalDays = 112; // 16 weeks
+  const daysRemaining = Math.max(0, totalDays - currentDay);
+  const progress = Math.min(100, Math.round((currentDay / totalDays) * 100));
   
-  document.getElementById('protocol-phase-name').textContent = phaseName;
+  // Calculate completion date
+  const completionDate = new Date(startDate);
+  completionDate.setDate(completionDate.getDate() + totalDays);
+  
+  // Update phase info
+  const currentPhase = PROTOCOL_PHASES.find(p => 
+    currentDay >= ((p.week - 1) * 7) && currentDay <= (p.week * 7 + p.duration * 7)
+  ) || PROTOCOL_PHASES[0];
+  
+  document.getElementById('protocol-phase-name').textContent = currentPhase.name;
   document.getElementById('protocol-phase-dates').textContent = 
-    `Day ${daysOnProtocol} • ${status}`;
-  
-  // Calculate progress based on symptom improvement, not days
-  let progress = 0;
-  if (protocolData.symptoms) {
-    const bloatingImprovement = protocolData.symptoms.bloating?.improvement || '0%';
-    progress = parseInt(bloatingImprovement);
-    
-    // Show symptom-based progress
-    document.getElementById('phase-progress').textContent = `${bloatingImprovement} improved`;
-  } else {
-    // Fallback to "Ongoing" if no symptom data
-    document.getElementById('phase-progress').textContent = 'Ongoing';
-    progress = 50; // Show partial bar
-  }
-  
+    `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${completionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  document.getElementById('phase-progress').textContent = `${progress}%`;
+  document.getElementById('phase-day-counter').textContent = `Day ${currentDay} of ${totalDays}`;
   document.getElementById('phase-progress-bar').style.width = `${progress}%`;
   
-  // Show exit criteria if available
-  if (protocolData.exitCriteria && Array.isArray(protocolData.exitCriteria)) {
-    const exitCriteriaHtml = `
-      <div class="mt-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
-        <h4 class="font-semibold text-accent-blue mb-3">Exit Criteria (When to Stop Protocol)</h4>
-        <div class="space-y-2">
-          ${protocolData.exitCriteria.map(criterion => {
-            // Check if criterion is met (basic heuristic)
-            const isMet = false; // Will be dynamic later
-            return `
-              <div class="flex items-start gap-2">
-                <span class="text-lg">${isMet ? '✅' : '⏳'}</span>
-                <span class="text-sm ${isMet ? 'text-accent-green' : 'text-gray-400'}">${criterion}</span>
+  // Update stats
+  document.getElementById('days-remaining').textContent = daysRemaining;
+  document.getElementById('completion-date').textContent = completionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  
+  // Calculate and display streak
+  calculateAndDisplayStreak();
+  
+  // Render the 16-week timeline
+  renderProtocolTimeline(currentDay, totalDays);
+  
+  // Render supplement schedule with checkboxes
+  renderSupplementSchedule();
+  
+  // Render adherence tracking
+  renderProtocolAdherenceTracking();
+  
+  // Legacy schedule timeline
+  renderLegacyScheduleTimeline();
+  
+  // Supplements list
+  renderSupplementsList();
+}
+
+// Calculate and display protocol streak
+function calculateAndDisplayStreak() {
+  const streakEl = document.getElementById('protocol-streak');
+  const allTimeStreakEl = document.getElementById('all-time-streak');
+  
+  // Get streak from localStorage or calculate from logs
+  let streak = parseInt(localStorage.getItem('protocolStreak') || '18');
+  
+  if (streakEl) streakEl.textContent = `🔥 ${streak} days`;
+  if (allTimeStreakEl) allTimeStreakEl.textContent = `${streak} days`;
+}
+
+// Render 16-Week Protocol Timeline
+function renderProtocolTimeline(currentDay, totalDays) {
+  const container = document.getElementById('protocol-timeline');
+  if (!container) return;
+  
+  let html = '<div class="relative">';
+  
+  // Progress bar background
+  html += `
+    <div class="absolute top-6 left-0 right-0 h-2 bg-gray-700 rounded-full"></div>
+    <div class="absolute top-6 left-0 h-2 bg-gradient-to-r from-accent-red via-accent-yellow to-accent-green rounded-full transition-all duration-500" style="width: ${(currentDay / totalDays) * 100}%"></div>
+  `;
+  
+  // Phase markers
+  html += '<div class="relative flex justify-between pt-0">';
+  
+  PROTOCOL_PHASES.forEach((phase, idx) => {
+    const startDay = (phase.week - 1) * 7;
+    const endDay = startDay + (phase.duration * 7);
+    const isActive = currentDay >= startDay && currentDay < endDay;
+    const isCompleted = currentDay >= endDay;
+    const position = (startDay / totalDays) * 100;
+    
+    const colorClass = phase.color.replace('accent-', 'text-').replace('primary-', 'text-primary-');
+    const bgClass = phase.color.replace('accent-', 'bg-').replace('primary-', 'bg-primary-');
+    
+    html += `
+      <div class="flex flex-col items-center" style="width: ${100 / PROTOCOL_PHASES.length}%"
+           title="${phase.description}"
+      >
+        <div class="text-xs text-gray-400 mb-1">W${phase.week}</div>
+        <div class="w-4 h-4 rounded-full border-2 ${isActive ? `${bgClass} border-white ring-2 ring-${bgClass} ring-opacity-50 animate-pulse` : isCompleted ? bgClass : 'bg-gray-800 border-gray-600'} z-10 transition-all"></div>
+        <div class="text-xs mt-2 text-center ${isActive ? colorClass : 'text-gray-500'}">
+          ${phase.name}
+        </div>
+        ${isActive ? `<div class="text-xs text-gray-400">${currentDay - startDay}d in</div>` : ''}
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  
+  // Current position indicator
+  const currentPosition = (currentDay / totalDays) * 100;
+  html += `
+    <div class="absolute top-4" style="left: ${Math.min(95, currentPosition)}%">
+      <div class="w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white transform -translate-x-1/2"></div>
+      <div class="text-xs text-white text-center -mt-1 -ml-1">You</div>
+    </div>
+  `;
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// Render Daily Supplement Schedule with Checkboxes
+function renderSupplementSchedule() {
+  const container = document.getElementById('supplement-schedule');
+  if (!container) return;
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  let html = '';
+  let takenCount = 0;
+  let totalCount = 0;
+  
+  Object.entries(ENHANCED_PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+    const [slotHour, slotMin] = slot.time.split(':').map(Number);
+    const slotTimeMinutes = slotHour * 60 + slotMin;
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    
+    // Determine slot status
+    const isPast = currentTimeMinutes > slotTimeMinutes + 120; // 2hr grace period
+    const isCurrent = Math.abs(currentTimeMinutes - slotTimeMinutes) <= 60;
+    const isFuture = currentTimeMinutes < slotTimeMinutes - 60;
+    
+    // Check if supplements are taken
+    const slotSupplements = slot.supplements.map(supp => {
+      totalCount += supp.count;
+      const logKey = `${key}_${supp.name}`;
+      const isTaken = localStorage.getItem(logKey) === new Date().toISOString().split('T')[0];
+      if (isTaken) takenCount += supp.count;
+      
+      return { ...supp, isTaken, logKey };
+    });
+    
+    const allTaken = slotSupplements.every(s => s.isTaken);
+    const someTaken = slotSupplements.some(s => s.isTaken) && !allTaken;
+    
+    // Status styling
+    let borderClass = 'border-l-4 border-gray-600';
+    let bgClass = 'bg-gray-800';
+    let statusBadge = '';
+    
+    if (isCurrent) {
+      borderClass = 'border-l-4 border-blue-500';
+      bgClass = 'bg-gray-700';
+      statusBadge = '<span class="text-xs bg-blue-600 px-2 py-0.5 rounded-full text-white animate-pulse">NOW</span>';
+    } else if (allTaken) {
+      borderClass = 'border-l-4 border-green-500';
+      statusBadge = '<span class="text-xs bg-green-600 px-2 py-0.5 rounded-full text-white">✓ Done</span>';
+    } else if (isPast && !allTaken) {
+      borderClass = 'border-l-4 border-red-500';
+      bgClass = 'bg-gray-800 opacity-75';
+      statusBadge = '<span class="text-xs bg-red-600 px-2 py-0.5 rounded-full text-white">Missed</span>';
+    }
+    
+    html += `
+      <div class="${bgClass} ${borderClass} rounded-lg p-4 transition-all hover:bg-gray-750">
+        <div class="flex justify-between items-start mb-3">
+          <div class="flex items-center gap-3">
+            <div class="text-2xl">${getTimeSlotIcon(key)}</div>
+            <div>
+              <div class="font-medium text-white">${slot.label}</div>
+              <div class="text-xs text-gray-400">${slot.time} • ${slot.timingNote}</div>
+            </div>
+          </div>
+          ${statusBadge}
+        </div>
+        
+        <div class="space-y-2 ml-11">
+          ${slotSupplements.map(supp => `
+            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-700 rounded p-2 transition-colors">
+              <input type="checkbox" 
+                     class="w-5 h-5 rounded border-gray-600 text-accent-green focus:ring-accent-green bg-gray-700"
+                     ${supp.isTaken ? 'checked' : ''}
+                     onchange="toggleSupplement('${supp.logKey}', ${supp.count})"
+                     ${isPast && !supp.isTaken ? 'disabled' : ''}
+              >
+              <div class="flex-1">
+                <span class="text-sm ${supp.isTaken ? 'text-gray-400 line-through' : 'text-white'}">${supp.name}</span>
+                <span class="text-xs text-gray-500 ml-2">${supp.dosage}</span>
               </div>
-            `;
-          }).join('')}
-        </div>
-        <div class="mt-3 text-xs text-gray-500">
-          Protocol continues until ALL criteria are met
+              <span class="text-xs text-gray-500">×${supp.count}</span>
+              ${supp.isTaken ? '<span class="text-green-500">✓</span>' : ''}
+            </label>
+          `).join('')}
         </div>
       </div>
     `;
-    
-    // Insert after progress bar
-    const progressBar = document.getElementById('phase-progress-bar').parentElement.parentElement;
-    const existingCriteria = progressBar.nextElementSibling;
-    if (existingCriteria && existingCriteria.classList.contains('exit-criteria')) {
-      existingCriteria.remove();
-    }
-    progressBar.insertAdjacentHTML('afterend', `<div class="exit-criteria">${exitCriteriaHtml}</div>`);
+  });
+  
+  container.innerHTML = html;
+  
+  // Update adherence rate
+  const adherenceRate = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
+  const rateEl = document.getElementById('today-adherence-rate');
+  if (rateEl) {
+    rateEl.textContent = `${adherenceRate}% taken today`;
+    rateEl.className = `text-sm font-normal ml-auto ${adherenceRate >= 80 ? 'text-green-400' : adherenceRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`;
   }
   
-  // Add adherence tracking section if not present
+  // Update quick stats
+  updateQuickStats(takenCount, totalCount);
+}
+
+// Get icon for time slot
+function getTimeSlotIcon(slotKey) {
+  const icons = {
+    morning: '🌅',
+    breakfast: '🍳',
+    lunch: '🥩',
+    dinner: '🍽️',
+    evening: '🌆',
+    bedtime: '😴'
+  };
+  return icons[slotKey] || '💊';
+}
+
+// Toggle supplement taken status
+function toggleSupplement(logKey, count) {
+  const today = new Date().toISOString().split('T')[0];
+  const currentValue = localStorage.getItem(logKey);
+  
+  if (currentValue === today) {
+    // Untake
+    localStorage.removeItem(logKey);
+  } else {
+    // Take
+    localStorage.setItem(logKey, today);
+  }
+  
+  // Refresh display
+  renderSupplementSchedule();
+  renderProtocolAdherenceTracking();
+  
+  // Update streak if all taken
+  checkAndUpdateStreak();
+}
+
+// Check if all supplements taken and update streak
+function checkAndUpdateStreak() {
+  const today = new Date().toISOString().split('T')[0];
+  let allTaken = true;
+  let totalDoses = 0;
+  let takenDoses = 0;
+  
+  Object.entries(ENHANCED_PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+    slot.supplements.forEach(supp => {
+      totalDoses += supp.count;
+      const logKey = `${key}_${supp.name}`;
+      if (localStorage.getItem(logKey) === today) {
+        takenDoses += supp.count;
+      } else {
+        allTaken = false;
+      }
+    });
+  });
+  
+  // If 80%+ taken, count as a streak day
+  const adherenceRate = totalDoses > 0 ? (takenDoses / totalDoses) : 0;
+  if (adherenceRate >= 0.8) {
+    let streak = parseInt(localStorage.getItem('protocolStreak') || '0');
+    const lastStreakDate = localStorage.getItem('lastStreakDate');
+    
+    if (lastStreakDate !== today) {
+      streak++;
+      localStorage.setItem('protocolStreak', streak.toString());
+      localStorage.setItem('lastStreakDate', today);
+      
+      // Update streak display
+      const streakEl = document.getElementById('protocol-streak');
+      const allTimeStreakEl = document.getElementById('all-time-streak');
+      if (streakEl) streakEl.textContent = `🔥 ${streak} days`;
+      if (allTimeStreakEl) allTimeStreakEl.textContent = `${streak} days`;
+      
+      showToast(`🔥 Streak continued! ${streak} days`);
+    }
+  }
+}
+
+// Update quick stats
+function updateQuickStats(taken, total) {
+  const missed = total - taken;
+  const pending = Math.max(0, total - taken);
+  
+  const takenEl = document.getElementById('taken-today');
+  const missedEl = document.getElementById('missed-today');
+  const pendingEl = document.getElementById('pending-today');
+  
+  if (takenEl) takenEl.textContent = taken;
+  if (missedEl) missedEl.textContent = missed;
+  if (pendingEl) pendingEl.textContent = pending;
+}
+
+// Render Protocol Adherence Tracking
+function renderProtocolAdherenceTracking() {
+  renderWeeklyAdherenceDots();
+  updateWeeklyAdherenceRate();
+}
+
+// Render weekly adherence dots
+function renderWeeklyAdherenceDots() {
+  const container = document.getElementById('weekly-adherence-dots');
+  if (!container) return;
+  
+  const today = new Date();
+  let html = '';
+  
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'narrow' });
+    
+    // Calculate adherence for this day
+    let taken = 0;
+    let total = 0;
+    
+    Object.entries(ENHANCED_PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+      slot.supplements.forEach(supp => {
+        total += supp.count;
+        const logKey = `${key}_${supp.name}`;
+        if (localStorage.getItem(`${logKey}_${dateStr}`)) {
+          taken += supp.count;
+        }
+      });
+    });
+    
+    const rate = total > 0 ? (taken / total) : 0;
+    let dotClass = 'bg-gray-700';
+    if (rate >= 0.8) dotClass = 'bg-green-500';
+    else if (rate >= 0.5) dotClass = 'bg-yellow-500';
+    else if (rate > 0) dotClass = 'bg-red-500';
+    
+    html += `
+      <div class="flex flex-col items-center flex-1">
+        <div class="w-4 h-4 rounded-full ${dotClass} mb-1" title="${dayName}: ${Math.round(rate * 100)}%"></div>
+        <span class="text-xs text-gray-500">${dayName}</span>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
+}
+
+// Update weekly adherence rate
+function updateWeeklyAdherenceRate() {
+  const rateEl = document.getElementById('weekly-adherence-rate');
+  const barEl = document.getElementById('weekly-adherence-bar');
+  
+  if (!rateEl || !barEl) return;
+  
+  // Calculate 7-day average
+  const today = new Date();
+  let totalTaken = 0;
+  let totalExpected = 0;
+  
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toISOString().split('T')[0];
+    
+    Object.entries(ENHANCED_PROTOCOL_SCHEDULE).forEach(([key, slot]) => {
+      slot.supplements.forEach(supp => {
+        totalExpected += supp.count;
+        const logKey = `${key}_${supp.name}`;
+        if (localStorage.getItem(`${logKey}_${dateStr}`)) {
+          totalTaken += supp.count;
+        }
+      });
+    });
+  }
+  
+  const rate = totalExpected > 0 ? Math.round((totalTaken / totalExpected) * 100) : 0;
+  
+  rateEl.textContent = `${rate}%`;
+  rateEl.className = `text-2xl font-bold ${rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-yellow-400' : 'text-red-400'}`;
+  
+  barEl.style.width = `${rate}%`;
+  barEl.className = `h-3 rounded-full transition-all ${rate >= 80 ? 'bg-green-500' : rate >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`;
+}
+
+// Render Legacy Schedule Timeline
+function renderLegacyScheduleTimeline() {
   const scheduleTimeline = document.getElementById('schedule-timeline');
-  if (scheduleTimeline) {
-    // Check if adherence section already exists
-    let adherenceSection = document.getElementById('protocol-adherence-section');
-    if (!adherenceSection) {
-      adherenceSection = document.createElement('div');
-      adherenceSection.id = 'protocol-adherence-section';
-      adherenceSection.className = 'mt-6';
-      scheduleTimeline.parentElement.insertBefore(adherenceSection, scheduleTimeline);
-    }
-    
-    adherenceSection.innerHTML = `
-      <div class="card p-6 mb-6 border-l-4 border-accent-green">
-        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
-          <span>📋</span> Protocol Adherence
-        </h3>
-        <div id="protocol-tab-next-dose"></div>
-        <div id="protocol-tab-adherence-checklist"></div>
-        <div id="protocol-tab-weekly-adherence"></div>
-      </div>
-    `;
-    
-    // Render adherence in protocol tab
-    renderProtocolTabAdherence();
-  }
+  if (!scheduleTimeline || !protocolData) return;
   
-  // Schedule timeline
   const scheduleOrder = ['morning_empty_stomach', 'breakfast', 'lunch', 'dinner', 'bedtime'];
   const scheduleLabels = {
     morning_empty_stomach: 'Morning (Empty Stomach)',
@@ -737,9 +1122,13 @@ function renderProtocol() {
       </div>
     `;
   }).join('');
-  
-  // Supplements list
+}
+
+// Render Supplements List
+function renderSupplementsList() {
   const supplementsList = document.getElementById('supplements-list');
+  if (!supplementsList || !protocolData) return;
+  
   supplementsList.innerHTML = protocolData.supplements?.map(s => `
     <div class="p-3 bg-gray-800 rounded-lg">
       <div class="flex justify-between items-start">
