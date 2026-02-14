@@ -234,6 +234,88 @@ app.get('/api/vitals', async (req, res) => {
   }
 });
 
+// Inject fixed HRV loader script
+app.get('/hrv-fix.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.send(`
+// Fixed HRV Status Loader - Injected by server
+async function loadHRVStatus() {
+  console.log('[HRV FIX] Loading from /api/vitals...');
+  try {
+    const vitals = await apiGet('/api/vitals');
+    console.log('[HRV FIX] Vitals count:', vitals?.length);
+    
+    if (!vitals || vitals.length === 0) {
+      document.getElementById('hrv-current').textContent = '--';
+      document.getElementById('hrv-status').textContent = 'No data';
+      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      return;
+    }
+    
+    const sortedVitals = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined);
+    
+    if (!latestVital) {
+      document.getElementById('hrv-current').textContent = '--';
+      document.getElementById('hrv-status').textContent = 'No data';
+      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      return;
+    }
+    
+    const hrv = latestVital.hrv;
+    const baseline = 61;
+    const diff = hrv - baseline;
+    const diffPercent = ((diff / baseline) * 100).toFixed(0);
+    
+    document.getElementById('hrv-current').textContent = hrv + 'ms';
+    document.getElementById('hrv-trend').textContent = (diff >= 0 ? '+' : '') + diff + 'ms (' + diffPercent + '%) vs baseline';
+    
+    const hrvElement = document.getElementById('hrv-current');
+    if (diff < -10) hrvElement.className = 'text-3xl font-bold text-accent-red';
+    else if (diff < 0) hrvElement.className = 'text-3xl font-bold text-accent-yellow';
+    else hrvElement.className = 'text-3xl font-bold text-accent-green';
+    
+    let status, recommendation, cardBorder;
+    if (hrv < baseline - 10) {
+      status = '🔴 CRITICAL - Below Baseline';
+      recommendation = 'REDUCE Allimax to 1-cap today. Prioritize sleep. No training.';
+      cardBorder = 'border-accent-red';
+    } else if (hrv < baseline - 5) {
+      status = '🟡 ELEVATED - Monitor Closely';
+      recommendation = 'Consider reducing Allimax dose. Focus on recovery.';
+      cardBorder = 'border-accent-yellow';
+    } else if (hrv > baseline + 20) {
+      status = '🟢 OPTIMAL - High Recovery';
+      recommendation = 'Good recovery capacity. Protocol on track.';
+      cardBorder = 'border-accent-green';
+    } else {
+      status = '🟢 NORMAL';
+      recommendation = 'Maintain current protocol. Continue monitoring.';
+      cardBorder = 'border-accent-green';
+    }
+    
+    document.getElementById('hrv-status').textContent = status;
+    document.getElementById('hrv-recommendation').textContent = recommendation;
+    
+    const card = document.getElementById('hrv-status-card');
+    card.className = 'card p-6 mb-6 border-l-4 ' + cardBorder;
+    
+    const sleepData = await apiGet('/api/sleep');
+    if (sleepData && sleepData.length > 0) {
+      const latestSleep = sleepData.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+      if (latestSleep && latestSleep.deepSleepMin) {
+        document.getElementById('hrv-deep-sleep').textContent = 'Deep sleep: ' + latestSleep.deepSleepMin + 'min';
+      }
+    }
+    
+  } catch (error) {
+    console.error('[HRV FIX] Error:', error);
+    document.getElementById('hrv-status').textContent = 'Error loading data';
+  }
+}
+  `);
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', database: 'connected' });
