@@ -1082,25 +1082,45 @@ async function loadVitals() {
     // Parse string values to numbers (API returns strings like "44.35")
     if (vitals && Array.isArray(vitals)) {
       console.log('DEBUG: Parsing vitals...');
-      vitals = vitals.map(v => ({
-        ...v,
-        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
-        rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null,
-        blood_oxygen: v.blood_oxygen !== null && v.blood_oxygen !== undefined ? parseFloat(v.blood_oxygen) : null,
-        respiratory_rate: v.respiratory_rate !== null && v.respiratory_rate !== undefined ? parseFloat(v.respiratory_rate) : null,
-        heart_rate: v.heart_rate !== null && v.heart_rate !== undefined ? parseFloat(v.heart_rate) : null
-      }));
+      vitals = vitals.map(v => {
+        try {
+          return {
+            ...v,
+            hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+            rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null,
+            blood_oxygen: v.blood_oxygen !== null && v.blood_oxygen !== undefined ? parseFloat(v.blood_oxygen) : null,
+            respiratory_rate: v.respiratory_rate !== null && v.respiratory_rate !== undefined ? parseFloat(v.respiratory_rate) : null,
+            heart_rate: v.heart_rate !== null && v.heart_rate !== undefined ? parseFloat(v.heart_rate) : null
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing vital record:', v, err);
+          return v;
+        }
+      });
       console.log('DEBUG: Parsed vitals sample:', vitals.slice(0, 2));
     }
     
+    // Render charts with individual error handling
     console.log('DEBUG: Rendering energy chart...');
-    renderEnergyChart(energy);
+    try {
+      renderEnergyChart(energy);
+    } catch (err) {
+      console.error('DEBUG: Error rendering energy chart:', err);
+    }
     
     console.log('DEBUG: Rendering sleep chart...');
-    renderSleepChart(sleep);
+    try {
+      renderSleepChart(sleep);
+    } catch (err) {
+      console.error('DEBUG: Error rendering sleep chart:', err);
+    }
     
     console.log('DEBUG: Rendering HRV trend chart...');
-    renderHRVTrendChart(vitals);
+    try {
+      renderHRVTrendChart(vitals);
+    } catch (err) {
+      console.error('DEBUG: Error rendering HRV trend chart:', err);
+    }
     
     console.log('=== DEBUG: loadVitals() END ===');
   } catch (err) {
@@ -2074,13 +2094,49 @@ async function loadSleep() {
     
     if (sleepData && sleepData.length > 0) {
       console.log('DEBUG: Rendering sleep components...');
-      renderSleepSummary(sleepData);
-      renderLatestSleep(sleepData[sleepData.length - 1]);
-      renderSleepDurationChart(sleepData);
-      renderDeepSleepTrendChart(sleepData, vitalsData);
-      renderSleepStagesChart(sleepData);
-      renderSleepHRVChart(sleepData, vitalsData);
-      renderSleepHistoryTable(sleepData);
+      
+      try {
+        renderSleepSummary(sleepData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering sleep summary:', err);
+      }
+      
+      try {
+        renderLatestSleep(sleepData[sleepData.length - 1]);
+      } catch (err) {
+        console.error('DEBUG: Error rendering latest sleep:', err);
+      }
+      
+      try {
+        renderSleepDurationChart(sleepData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering sleep duration chart:', err);
+      }
+      
+      try {
+        renderDeepSleepTrendChart(sleepData, vitalsData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering deep sleep trend chart:', err);
+      }
+      
+      try {
+        renderSleepStagesChart(sleepData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering sleep stages chart:', err);
+      }
+      
+      try {
+        renderSleepHRVChart(sleepData, vitalsData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering sleep HRV chart:', err);
+      }
+      
+      try {
+        renderSleepHistoryTable(sleepData);
+      } catch (err) {
+        console.error('DEBUG: Error rendering sleep history table:', err);
+      }
+      
     } else {
       console.log('DEBUG: No sleep data to render');
       const historyTable = document.getElementById('sleep-history-table');
@@ -2334,170 +2390,207 @@ function renderSleepDurationChart(sleepData) {
 
 // Deep Sleep Trend Line Chart with HRV Correlation
 function renderDeepSleepTrendChart(sleepData, vitalsData) {
-  const ctx = document.getElementById('deep-sleep-trend-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderDeepSleepTrendChart() START ===');
   
-  // Destroy existing chart if exists
-  if (charts.deepSleepTrend) {
-    charts.deepSleepTrend.destroy();
-  }
-  
-  // Get last 14 days
-  const last14Days = sleepData.slice(-14);
-  
-  // Prepare labels
-  const labels = last14Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--');
-  
-  // Deep sleep data - map API field names to frontend expected names
-  const deepSleepData = last14Days.map(d => d.deepSleepMinutes !== undefined ? d.deepSleepMinutes : d.deepSleepMin || 0);
-  
-  // Match with HRV data by date - ensure vitals HRV values are parsed numbers
-  const hrvData = last14Days.map(sleep => {
-    if (!sleep.date) return null;
-    const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
-    const matchingVital = vitalsData?.find(v => v.date === sleepDate);
-    // HRV should already be parsed as number from loadSleep
-    return matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined && !isNaN(matchingVital.hrv) 
-      ? matchingVital.hrv 
-      : null;
-  });
-  
-  // Calculate correlation coefficient for display
-  const validPairs = deepSleepData.map((deep, i) => ({ deep, hrv: hrvData[i] }))
-    .filter(p => p.hrv !== null && p.deep > 0);
-  
-  let correlationText = '';
-  if (validPairs.length >= 3) {
-    const avgDeep = validPairs.reduce((s, p) => s + p.deep, 0) / validPairs.length;
-    const avgHrv = validPairs.reduce((s, p) => s + p.hrv, 0) / validPairs.length;
-    const numerator = validPairs.reduce((s, p) => s + (p.deep - avgDeep) * (p.hrv - avgHrv), 0);
-    const denomDeep = Math.sqrt(validPairs.reduce((s, p) => s + Math.pow(p.deep - avgDeep, 2), 0));
-    const denomHrv = Math.sqrt(validPairs.reduce((s, p) => s + Math.pow(p.hrv - avgHrv, 2), 0));
-    const correlation = denomDeep > 0 && denomHrv > 0 ? numerator / (denomDeep * denomHrv) : 0;
-    
-    if (Math.abs(correlation) > 0.5) {
-      correlationText = correlation > 0 ? 'Strong positive correlation with HRV' : 'Strong negative correlation with HRV';
-    } else if (Math.abs(correlation) > 0.3) {
-      correlationText = correlation > 0 ? 'Moderate positive correlation with HRV' : 'Moderate negative correlation with HRV';
-    } else {
-      correlationText = 'Weak correlation with HRV';
+  try {
+    const ctx = document.getElementById('deep-sleep-trend-chart');
+    if (!ctx) {
+      console.error('DEBUG: deep-sleep-trend-chart canvas element NOT FOUND!');
+      return;
     }
-  }
-  
-  charts.deepSleepTrend = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Deep Sleep (min)',
-          data: deepSleepData,
-          borderColor: '#8b5cf6',
-          backgroundColor: 'rgba(139, 92, 246, 0.1)',
-          borderWidth: 3,
-          tension: 0.4,
-          fill: true,
-          pointRadius: 5,
-          pointBackgroundColor: '#8b5cf6',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          yAxisID: 'y'
-        },
-        {
-          label: 'HRV (ms)',
-          data: hrvData,
-          borderColor: '#3b82f6',
-          backgroundColor: '#3b82f6',
-          borderWidth: 0,
-          pointRadius: 6,
-          pointStyle: 'circle',
-          showLine: false,
-          yAxisID: 'y1'
-        },
-        {
-          label: 'Optimal Target (90min)',
-          data: labels.map(() => 90),
-          borderColor: '#10b981',
-          borderWidth: 2,
-          borderDash: [8, 4],
-          pointRadius: 0,
-          fill: false,
-          yAxisID: 'y'
+    console.log('DEBUG: deep-sleep-trend-chart canvas found');
+    
+    // Destroy existing chart if exists
+    if (charts.deepSleepTrend) {
+      console.log('DEBUG: Destroying existing deepSleepTrend chart');
+      charts.deepSleepTrend.destroy();
+      charts.deepSleepTrend = null;
+    }
+    
+    if (!sleepData || !Array.isArray(sleepData) || sleepData.length === 0) {
+      console.log('DEBUG: No sleep data for deep sleep trend chart');
+      return;
+    }
+    console.log('DEBUG: Sleep data count:', sleepData.length);
+    
+    // Get last 14 days with parsed data
+    const last14Days = sleepData
+      .map(d => {
+        try {
+          return {
+            date: d.date,
+            deepSleepMinutes: d.deepSleepMinutes !== undefined ? parseInt(d.deepSleepMinutes) :
+                             d.deepSleepMin !== undefined ? parseInt(d.deepSleepMin) :
+                             d.deep_sleep_minutes !== undefined ? parseInt(d.deep_sleep_minutes) : 0
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing sleep record:', d, err);
+          return null;
         }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        mode: 'index',
-        intersect: false
+      })
+      .filter(d => d && d.date)
+      .slice(-14);
+    
+    if (last14Days.length === 0) {
+      console.log('DEBUG: No valid sleep data after filtering');
+      return;
+    }
+    console.log('DEBUG: Valid sleep records:', last14Days.length);
+    
+    // Prepare labels
+    const labels = last14Days.map(d => {
+      try {
+        return new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch (err) {
+        return '--';
+      }
+    });
+    
+    // Deep sleep data
+    const deepSleepData = last14Days.map(d => d.deepSleepMinutes || 0);
+    
+    // Match with HRV data by date - ensure vitals HRV values are parsed numbers
+    const hrvData = last14Days.map(sleep => {
+      if (!sleep.date || !vitalsData || !Array.isArray(vitalsData)) return null;
+      try {
+        const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
+        const matchingVital = vitalsData.find(v => v.date === sleepDate);
+        const hrv = matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined 
+          ? parseFloat(matchingVital.hrv) 
+          : null;
+        return hrv && !isNaN(hrv) ? hrv : null;
+      } catch (err) {
+        return null;
+      }
+    });
+    
+    console.log('DEBUG: Deep sleep data:', deepSleepData);
+    console.log('DEBUG: HRV data:', hrvData);
+    
+    charts.deepSleepTrend = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Deep Sleep (min)',
+            data: deepSleepData,
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            borderWidth: 3,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 5,
+            pointBackgroundColor: '#8b5cf6',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            yAxisID: 'y'
+          },
+          {
+            label: 'HRV (ms)',
+            data: hrvData,
+            borderColor: '#3b82f6',
+            backgroundColor: '#3b82f6',
+            borderWidth: 0,
+            pointRadius: 6,
+            pointStyle: 'circle',
+            showLine: false,
+            yAxisID: 'y1'
+          },
+          {
+            label: 'Optimal Target (90min)',
+            data: labels.map(() => 90),
+            borderColor: '#10b981',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointRadius: 0,
+            fill: false,
+            yAxisID: 'y'
+          }
+        ]
       },
-      plugins: {
-        legend: {
-          labels: { 
-            color: '#e5e7eb',
-            usePointStyle: true,
-            padding: 20
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            labels: { 
+              color: '#e5e7eb',
+              usePointStyle: true,
+              padding: 20
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb',
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (context) => {
+                if (context.dataset.label === 'Deep Sleep (min)') {
+                  const val = context.parsed.y;
+                  const status = val >= 90 ? '✅ Optimal' : val >= 60 ? '⚠️ Low' : '❌ Very Low';
+                  return `Deep Sleep: ${val} min ${status}`;
+                }
+                if (context.dataset.label === 'HRV (ms)') {
+                  return context.parsed.y ? `HRV: ${context.parsed.y} ms` : 'HRV: No data';
+                }
+                return `${context.dataset.label}: ${context.parsed.y}`;
+              }
+            }
           }
         },
-        tooltip: {
-          callbacks: {
-            title: (items) => items[0].label,
-            label: (context) => {
-              if (context.dataset.label === 'Deep Sleep (min)') {
-                const val = context.parsed.y;
-                const status = val >= 90 ? '✅ Optimal' : val >= 60 ? '⚠️ Low' : '❌ Very Low';
-                return `Deep Sleep: ${val} min ${status}`;
-              }
-              if (context.dataset.label === 'HRV (ms)') {
-                return context.parsed.y ? `HRV: ${context.parsed.y} ms` : 'HRV: No data';
-              }
-              return `${context.dataset.label}: ${context.parsed.y}`;
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            beginAtZero: true,
+            max: 150,
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' },
+            title: {
+              display: true,
+              text: 'Deep Sleep (minutes)',
+              color: '#8b5cf6'
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            min: 30,
+            max: 100,
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#3b82f6' },
+            title: {
+              display: true,
+              text: 'HRV (ms)',
+              color: '#3b82f6'
+            }
+          },
+          x: {
+            grid: { color: '#374151' },
+            ticks: { 
+              color: '#9ca3af',
+              maxRotation: 45,
+              minRotation: 45
             }
           }
         }
-      },
-      scales: {
-        y: {
-          type: 'linear',
-          display: true,
-          position: 'left',
-          beginAtZero: true,
-          max: 150,
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' },
-          title: {
-            display: true,
-            text: 'Deep Sleep (minutes)',
-            color: '#8b5cf6'
-          }
-        },
-        y1: {
-          type: 'linear',
-          display: true,
-          position: 'right',
-          min: 30,
-          max: 100,
-          grid: { drawOnChartArea: false },
-          ticks: { color: '#3b82f6' },
-          title: {
-            display: true,
-            text: 'HRV (ms)',
-            color: '#3b82f6'
-          }
-        },
-        x: {
-          grid: { color: '#374151' },
-          ticks: { 
-            color: '#9ca3af',
-            maxRotation: 45,
-            minRotation: 45
-          }
-        }
       }
-    }
-  });
+    });
+    console.log('DEBUG: Deep sleep trend chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderDeepSleepTrendChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
+  }
+  
+  console.log('=== DEBUG: renderDeepSleepTrendChart() END ===');
 }
 
 function renderLatestSleep(sleep) {
@@ -2585,177 +2678,251 @@ function renderLatestSleep(sleep) {
 }
 
 function renderSleepStagesChart(sleepData) {
-  const ctx = document.getElementById('sleep-stages-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderSleepStagesChart() START ===');
   
-  // Destroy existing chart if exists
-  if (charts.sleepStages) {
-    charts.sleepStages.destroy();
-  }
-  
-  const last7Days = sleepData.slice(-7);
-  
-  charts.sleepStages = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: last7Days.map(d => d.date ? new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'),
-      datasets: [
-        {
-          label: 'Deep Sleep (min)',
-          data: last7Days.map(d => d.deepSleepMinutes !== undefined ? d.deepSleepMinutes : d.deepSleepMin || 0),
-          backgroundColor: '#8b5cf6',
-          borderColor: '#8b5cf6',
-          borderWidth: 2
-        },
-        {
-          label: 'REM Sleep (min)',
-          data: last7Days.map(d => d.remMinutes !== undefined ? d.remMinutes : d.remMin || 0),
-          backgroundColor: '#06b6d4',
-          borderColor: '#06b6d4',
-          borderWidth: 2
-        },
-        {
-          label: 'Core Sleep (min)',
-          data: last7Days.map(d => d.coreMinutes !== undefined ? d.coreMinutes : d.coreMin || 0),
-          backgroundColor: '#3b82f6',
-          borderColor: '#3b82f6',
-          borderWidth: 2
+  try {
+    const ctx = document.getElementById('sleep-stages-chart');
+    if (!ctx) {
+      console.error('DEBUG: sleep-stages-chart canvas element NOT FOUND!');
+      return;
+    }
+    console.log('DEBUG: sleep-stages-chart canvas found');
+    
+    // Destroy existing chart if exists
+    if (charts.sleepStages) {
+      console.log('DEBUG: Destroying existing sleepStages chart');
+      charts.sleepStages.destroy();
+      charts.sleepStages = null;
+    }
+    
+    if (!sleepData || !Array.isArray(sleepData) || sleepData.length === 0) {
+      console.log('DEBUG: No sleep data for stages chart');
+      return;
+    }
+    
+    const last7Days = sleepData
+      .map(d => {
+        try {
+          return {
+            date: d.date,
+            deepSleepMinutes: d.deepSleepMinutes !== undefined ? parseInt(d.deepSleepMinutes) :
+                             d.deepSleepMin !== undefined ? parseInt(d.deepSleepMin) :
+                             d.deep_sleep_minutes !== undefined ? parseInt(d.deep_sleep_minutes) : 0,
+            remMinutes: d.remMinutes !== undefined ? parseInt(d.remMinutes) :
+                       d.remMin !== undefined ? parseInt(d.remMin) :
+                       d.rem_minutes !== undefined ? parseInt(d.rem_minutes) : 0,
+            coreMinutes: d.coreMinutes !== undefined ? parseInt(d.coreMinutes) :
+                        d.coreMin !== undefined ? parseInt(d.coreMin) :
+                        d.core_minutes !== undefined ? parseInt(d.core_minutes) : 0
+          };
+        } catch (err) {
+          console.error('DEBUG: Error parsing sleep record:', d, err);
+          return null;
         }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          beginAtZero: true,
-          stacked: true,
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' },
-          title: {
-            display: true,
-            text: 'Minutes',
-            color: '#9ca3af'
+      })
+      .filter(d => d && d.date)
+      .slice(-7);
+    
+    if (last7Days.length === 0) {
+      console.log('DEBUG: No valid sleep data after filtering');
+      return;
+    }
+    
+    charts.sleepStages = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: last7Days.map(d => {
+          try {
+            return new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          } catch (err) {
+            return '--';
+          }
+        }),
+        datasets: [
+          {
+            label: 'Deep Sleep (min)',
+            data: last7Days.map(d => d.deepSleepMinutes || 0),
+            backgroundColor: '#8b5cf6',
+            borderColor: '#8b5cf6',
+            borderWidth: 2
+          },
+          {
+            label: 'REM Sleep (min)',
+            data: last7Days.map(d => d.remMinutes || 0),
+            backgroundColor: '#06b6d4',
+            borderColor: '#06b6d4',
+            borderWidth: 2
+          },
+          {
+            label: 'Core Sleep (min)',
+            data: last7Days.map(d => d.coreMinutes || 0),
+            backgroundColor: '#3b82f6',
+            borderColor: '#3b82f6',
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            stacked: true,
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' },
+            title: {
+              display: true,
+              text: 'Minutes',
+              color: '#9ca3af'
+            }
+          },
+          x: {
+            stacked: true,
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' }
           }
         },
-        x: {
-          stacked: true,
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' }
+        plugins: {
+          legend: {
+            labels: { color: '#e5e7eb' }
+          },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb'
+          }
         }
+      }
+    });
+    console.log('DEBUG: Sleep stages chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderSleepStagesChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
+  }
+  
+  console.log('=== DEBUG: renderSleepStagesChart() END ===');
+}
+
+function renderSleepHRVChart(sleepData, vitalsData) {
+  console.log('=== DEBUG: renderSleepHRVChart() START ===');
+  
+  try {
+    const ctx = document.getElementById('sleep-hrv-chart');
+    if (!ctx) {
+      console.error('DEBUG: sleep-hrv-chart canvas element NOT FOUND!');
+      return;
+    }
+    console.log('DEBUG: sleep-hrv-chart canvas found');
+    
+    // Destroy existing chart if exists
+    if (charts.sleepHRV) {
+      console.log('DEBUG: Destroying existing sleepHRV chart');
+      charts.sleepHRV.destroy();
+      charts.sleepHRV = null;
+    }
+    
+    if (!sleepData || !Array.isArray(sleepData) || sleepData.length === 0) {
+      console.log('DEBUG: No sleep data for HRV correlation chart');
+      return;
+    }
+    
+    // Match sleep data with HRV data by date
+    const matchedData = sleepData
+      .slice(-14)
+      .map(sleep => {
+        if (!sleep.date || !vitalsData || !Array.isArray(vitalsData)) return null;
+        try {
+          const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
+          const matchingVital = vitalsData.find(v => v.date === sleepDate);
+          const hrv = matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined
+            ? parseFloat(matchingVital.hrv)
+            : null;
+          return {
+            date: sleepDate,
+            deepSleep: sleep.deepSleepMinutes !== undefined ? parseInt(sleep.deepSleepMinutes) :
+                      sleep.deepSleepMin !== undefined ? parseInt(sleep.deepSleepMin) :
+                      sleep.deep_sleep_minutes !== undefined ? parseInt(sleep.deep_sleep_minutes) : 0,
+            hrv: hrv && !isNaN(hrv) ? hrv : null
+          };
+        } catch (err) {
+          return null;
+        }
+      })
+      .filter(d => d && d.hrv !== null);
+    
+    console.log('DEBUG: Matched sleep-HRV data points:', matchedData.length);
+    
+    if (matchedData.length === 0) {
+      console.log('DEBUG: No matched sleep-HRV data');
+      return;
+    }
+    
+    charts.sleepHRV = new Chart(ctx, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: 'Deep Sleep vs HRV',
+            data: matchedData.map(d => ({ x: d.deepSleep, y: d.hrv })),
+            backgroundColor: '#8b5cf6',
+            borderColor: '#a78bfa',
+            borderWidth: 2,
+            pointRadius: 6,
+            pointHoverRadius: 8
+          }
+        ]
       },
-      plugins: {
-        legend: {
-          labels: { color: '#e5e7eb' }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' },
+            title: {
+              display: true,
+              text: 'Deep Sleep (minutes)',
+              color: '#9ca3af'
+            }
+          },
+          y: {
+            grid: { color: '#374151' },
+            ticks: { color: '#9ca3af' },
+            title: {
+              display: true,
+              text: 'HRV (ms)',
+              color: '#9ca3af'
+            }
+          }
         },
-        annotation: {
-          annotations: {
-            deepTarget: {
-              type: 'line',
-              yMin: 90,
-              yMax: 90,
-              borderColor: '#10b981',
-              borderWidth: 2,
-              borderDash: [5, 5],
-              label: {
-                content: 'Deep Sleep Target: 90 min',
-                enabled: true,
-                position: 'end',
-                backgroundColor: '#10b981',
-                color: '#ffffff'
+        plugins: {
+          legend: {
+            labels: { color: '#e5e7eb' }
+          },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb',
+            callbacks: {
+              label: function(context) {
+                const dataPoint = matchedData[context.dataIndex];
+                return `${dataPoint.date}: ${context.parsed.x} min deep, ${context.parsed.y} ms HRV`;
               }
             }
           }
         }
       }
-    }
-  });
-}
-
-function renderSleepHRVChart(sleepData, vitalsData) {
-  const ctx = document.getElementById('sleep-hrv-chart');
-  if (!ctx) return;
-  
-  // Destroy existing chart if exists
-  if (charts.sleepHRV) {
-    charts.sleepHRV.destroy();
+    });
+    console.log('DEBUG: Sleep-HRV chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error in renderSleepHRVChart():', err);
+    console.error('DEBUG: Stack:', err.stack);
   }
   
-  // Match sleep data with HRV data by date
-  const matchedData = sleepData.slice(-14).map(sleep => {
-    if (!sleep.date) return null;
-    const sleepDate = new Date(sleep.date).toISOString().split('T')[0];
-    const matchingVital = vitalsData.find(v => v.date === sleepDate);
-    // HRV should already be parsed as number from loadSleep
-    return {
-      date: sleepDate,
-      deepSleep: sleep.deepSleepMinutes !== undefined ? sleep.deepSleepMinutes : sleep.deepSleepMin || 0,
-      hrv: matchingVital && matchingVital.hrv !== null && matchingVital.hrv !== undefined && !isNaN(matchingVital.hrv)
-        ? matchingVital.hrv 
-        : null
-    };
-  }).filter(d => d && d.hrv !== null);
-  
-  if (matchedData.length === 0) {
-    ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
-    return;
-  }
-  
-  charts.sleepHRV = new Chart(ctx, {
-    type: 'scatter',
-    data: {
-      datasets: [
-        {
-          label: 'Deep Sleep vs HRV',
-          data: matchedData.map(d => ({ x: d.deepSleep, y: d.hrv })),
-          backgroundColor: '#8b5cf6',
-          borderColor: '#a78bfa',
-          borderWidth: 2,
-          pointRadius: 6,
-          pointHoverRadius: 8
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          type: 'linear',
-          position: 'bottom',
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' },
-          title: {
-            display: true,
-            text: 'Deep Sleep (minutes)',
-            color: '#9ca3af'
-          }
-        },
-        y: {
-          grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' },
-          title: {
-            display: true,
-            text: 'HRV (ms)',
-            color: '#9ca3af'
-          }
-        }
-      },
-      plugins: {
-        legend: {
-          labels: { color: '#e5e7eb' }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const dataPoint = matchedData[context.dataIndex];
-              return `${dataPoint.date}: ${context.parsed.x} min deep, ${context.parsed.y} ms HRV`;
-            }
-          }
-        }
-      }
-    }
-  });
+  console.log('=== DEBUG: renderSleepHRVChart() END ===');
 }
 
 function renderSleepHistoryTable(sleepData) {
