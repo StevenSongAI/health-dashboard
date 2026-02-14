@@ -222,6 +222,77 @@ app.get('/api/overview', async (req, res) => {
   }
 });
 
+// --- Alerts ---
+app.get('/api/alerts', async (req, res) => {
+  try {
+    // Get recent data to generate alerts
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    // Check for missing supplements
+    const suppsResult = await getPool().query(
+      'SELECT COUNT(*) as count FROM supplement_logs WHERE date = $1', 
+      [today]
+    );
+    
+    // Check for low HRV
+    const vitalsResult = await getPool().query(
+      'SELECT hrv, rhr FROM vitals WHERE date = $1 ORDER BY time DESC LIMIT 1',
+      [today]
+    );
+    
+    // Check for poor sleep
+    const sleepResult = await getPool().query(
+      'SELECT total_hours, quality, deep_sleep_minutes FROM sleep WHERE date = $1',
+      [yesterday]
+    );
+    
+    const alerts = [];
+    
+    // Generate alerts based on data
+    if (suppsResult.rows[0]?.count < 3) {
+      alerts.push({
+        id: 'supplements-missed',
+        message: 'Supplements behind schedule',
+        details: `Only ${suppsResult.rows[0].count}/6 taken today`,
+        priority: 'medium',
+        dismissed: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    if (vitalsResult.rows[0]?.hrv && vitalsResult.rows[0].hrv < 35) {
+      alerts.push({
+        id: 'low-hrv',
+        message: 'HRV is low today',
+        details: `Current: ${Math.round(vitalsResult.rows[0].hrv)} ms`,
+        priority: 'high',
+        dismissed: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    if (sleepResult.rows[0]) {
+      const sleep = sleepResult.rows[0];
+      if (sleep.total_hours < 6) {
+        alerts.push({
+          id: 'poor-sleep',
+          message: 'Poor sleep last night',
+          details: `Only ${sleep.total_hours}h recorded`,
+          priority: 'medium',
+          dismissed: false,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
+    res.json(alerts);
+  } catch (err) {
+    console.error('Alerts error:', err);
+    res.json([]); // Return empty on error
+  }
+});
+
 // --- Protocol ---
 app.get('/api/protocol', async (req, res) => {
   try {
