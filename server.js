@@ -17,7 +17,18 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Cache-busting for static files
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1m', // 1 minute cache for development
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // Initialize database tables
 async function initDatabase() {
