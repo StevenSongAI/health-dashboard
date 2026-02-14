@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Health Dashboard - Diagnostic</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0b0f19; color: #e5e7eb; padding: 20px; }
+    .card { background: #1f2937; border-radius: 12px; padding: 20px; margin: 10px 0; border: 1px solid #374151; }
+    h1 { color: #6366f1; }
+    .metric { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #374151; }
+    .metric:last-child { border-bottom: none; }
+    .value { font-weight: bold; color: #10b981; }
+    .red { color: #ef4444; }
+    .yellow { color: #f59e0b; }
+    button { background: #6366f1; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+    #status { margin: 20px 0; padding: 10px; border-radius: 8px; background: #374151; }
+  </style>
+</head>
+<body>
+  <h1>🩺 Health Dashboard - Diagnostic Tool</h1>
+  <p>Verify your Apple Health data is properly stored in the database.</p>
+  
+  <div id="status">Click "Load Data" to fetch your health data...</div>
+  
+  <button onclick="loadData()">Load Data</button>
+  <button onclick="window.location.reload(true)">Force Refresh</button>
+  
+  <div id="results"></div>
+
+  <script>
+    const API_BASE = 'https://health-dashboard-production-e219.up.railway.app/api';
+    
+    async function loadData() {
+      const status = document.getElementById('status');
+      const results = document.getElementById('results');
+      
+      status.textContent = 'Loading...';
+      status.style.background = '#374151';
+      
+      try {
+        // Fetch vitals
+        const vitalsRes = await fetch(`${API_BASE}/vitals`);
+        const vitals = await vitalsRes.json();
+        
+        // Fetch sleep
+        const sleepRes = await fetch(`${API_BASE}/sleep`);
+        const sleep = await sleepRes.json();
+        
+        // Fetch symptoms
+        const symptomsRes = await fetch(`${API_BASE}/symptoms`);
+        const symptoms = await symptomsRes.json();
+        
+        // Get latest HRV
+        const hrvData = vitals.filter(v => v.hrv).sort((a, b) => new Date(b.date) - new Date(a.date));
+        const latestHRV = hrvData[0];
+        
+        // Get latest sleep
+        const latestSleep = sleep.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+        
+        status.textContent = `✅ Data loaded successfully!`;
+        status.style.background = '#065f46';
+        
+        results.innerHTML = `
+          <div class="card">
+            <h2>📊 Data Summary</h2>
+            <div class="metric">
+              <span>Total Vitals Records</span>
+              <span class="value">${vitals.length}</span>
+            </div>
+            <div class="metric">
+              <span>HRV Records</span>
+              <span class="value">${hrvData.length}</span>
+            </div>
+            <div class="metric">
+              <span>Sleep Records</span>
+              <span class="value">${sleep.length}</span>
+            </div>
+            <div class="metric">
+              <span>Symptom Records</span>
+              <span class="value">${symptoms.length}</span>
+            </div>
+          </div>
+          
+          <div class="card">
+            <h2>💓 Latest HRV</h2>
+            ${latestHRV ? `
+              <div class="metric">
+                <span>Current HRV</span>
+                <span class="value ${latestHRV.hrv < 51 ? 'red' : latestHRV.hrv < 61 ? 'yellow' : ''}">${latestHRV.hrv}ms</span>
+              </div>
+              <div class="metric">
+                <span>Date</span>
+                <span>${latestHRV.date}</span>
+              </div>
+              <div class="metric">
+                <span>vs Baseline (61ms)</span>
+                <span class="${latestHRV.hrv < 61 ? 'red' : 'value'}">${latestHRV.hrv - 61 > 0 ? '+' : ''}${(latestHRV.hrv - 61).toFixed(1)}ms</span>
+              </div>
+              <div class="metric">
+                <span>Status</span>
+                <span class="${latestHRV.hrv < 51 ? 'red' : latestHRV.hrv < 61 ? 'yellow' : 'value'}">
+                  ${latestHRV.hrv < 51 ? '🔴 CRITICAL' : latestHRV.hrv < 61 ? '🟡 ELEVATED' : '🟢 NORMAL'}
+                </span>
+              </div>
+              ${latestHRV.notes ? `<div class="metric"><span>Notes</span><span>${latestHRV.notes}</span></div>` : ''}
+            ` : '<p>No HRV data found</p>'}
+          </div>
+          
+          <div class="card">
+            <h2>😴 Latest Sleep</h2>
+            ${latestSleep ? `
+              <div class="metric">
+                <span>Date</span>
+                <span>${latestSleep.date}</span>
+              </div>
+              <div class="metric">
+                <span>Duration</span>
+                <span class="value">${latestSleep.durationHours || latestSleep.hours || 'N/A'} hrs</span>
+              </div>
+              <div class="metric">
+                <span>Deep Sleep</span>
+                <span class="${(latestSleep.deepSleepMin || 0) < 60 ? 'red' : 'value'}">${latestSleep.deepSleepMin || 'N/A'} min</span>
+              </div>
+              <div class="metric">
+                <span>Quality</span>
+                <span>${latestSleep.quality || 'N/A'}/10</span>
+              </div>
+            ` : '<p>No sleep data found</p>'}
+          </div>
+          
+          <div class="card">
+            <h2>🔧 Recommendation</h2>
+            <p>${latestHRV && latestHRV.hrv < 61 ? 
+              '⚠️ Your HRV is below baseline. Consider reducing Allimax to 1-cap and prioritizing sleep.' : 
+              '✅ Your HRV is at or above baseline. Current protocol is working.'}</p>
+          </div>
+        `;
+        
+      } catch (error) {
+        status.textContent = `❌ Error: ${error.message}`;
+        status.style.background = '#7f1d1d';
+        console.error(error);
+      }
+    }
+    
+    // Auto-load on page open
+    loadData();
+  </script>
+</body>
+</html>
