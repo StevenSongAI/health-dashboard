@@ -1757,12 +1757,24 @@ async function loadSleep() {
     if (sleepData && Array.isArray(sleepData)) {
       sleepData = sleepData.map(s => ({
         ...s,
-        // Map API field names (durationHours, deepSleepMin, etc.) to frontend names (totalHours, deepSleepMinutes, etc.)
-        totalHours: s.totalHours !== undefined ? s.totalHours : s.durationHours !== undefined ? s.durationHours : s.duration || 0,
-        deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : s.deepSleepMin !== undefined ? s.deepSleepMin : 0,
-        remMinutes: s.remMinutes !== undefined ? s.remMinutes : s.remMin !== undefined ? s.remMin : 0,
-        coreMinutes: s.coreMinutes !== undefined ? s.coreMinutes : s.coreMin !== undefined ? s.coreMin : 0,
-        awakeMinutes: s.awakeMinutes !== undefined ? s.awakeMinutes : s.awakeMin !== undefined ? s.awakeMin : 0,
+        // Map API snake_case field names to frontend camelCase names
+        totalHours: s.totalHours !== undefined ? s.totalHours : 
+                    s.durationHours !== undefined ? s.durationHours : 
+                    s.sleep_hours !== undefined ? parseFloat(s.sleep_hours) : 
+                    s.duration || 0,
+        deepSleepMinutes: s.deepSleepMinutes !== undefined ? s.deepSleepMinutes : 
+                          s.deepSleepMin !== undefined ? s.deepSleepMin : 
+                          s.deep_sleep_minutes !== undefined ? s.deep_sleep_minutes : 0,
+        remMinutes: s.remMinutes !== undefined ? s.remMinutes : 
+                    s.remMin !== undefined ? s.remMin : 
+                    s.rem_minutes !== undefined ? s.rem_minutes : 0,
+        coreMinutes: s.coreMinutes !== undefined ? s.coreMinutes : 
+                     s.coreMin !== undefined ? s.coreMin : 
+                     s.core_minutes !== undefined ? s.core_minutes : 0,
+        awakeMinutes: s.awakeMinutes !== undefined ? s.awakeMinutes : 
+                      s.awakeMin !== undefined ? s.awakeMin : 
+                      s.awake_minutes !== undefined ? s.awake_minutes : 0,
+        quality: s.quality !== undefined ? s.quality : s.sleep_quality || 0,
         // Ensure date is properly parsed
         date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
       }));
