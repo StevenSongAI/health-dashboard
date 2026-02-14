@@ -1716,11 +1716,17 @@ async function loadSleep() {
 }
 
 function renderSleepSummary(sleepData) {
+  if (!sleepData || sleepData.length === 0) {
+    console.log('No sleep data available');
+    return;
+  }
+  
   const latest = sleepData[sleepData.length - 1];
   const last7Days = sleepData.slice(-7);
   
-  // Last night total
-  document.getElementById('sleep-last-total').textContent = `${latest.totalHours.toFixed(1)}h`;
+  // Last night total - handle different field names
+  const totalHours = latest.totalHours || latest.durationHours || latest.duration || 0;
+  document.getElementById('sleep-last-total').textContent = `${Number(totalHours).toFixed(1)}h`;
   document.getElementById('sleep-last-date').textContent = new Date(latest.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   
   // Last night deep sleep
