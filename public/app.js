@@ -852,85 +852,353 @@ async function renderProtocolTabAdherence() {
 
 // Load Symptoms
 async function loadSymptoms() {
-  const symptoms = await apiGet('/api/symptoms');
-  const trends = await apiGet('/api/symptoms/trends');
+  console.log('=== DEBUG: loadSymptoms() START ===');
   
-  // Recent symptoms list
-  const list = document.getElementById('recent-symptoms-list');
-  if (symptoms?.length > 0) {
-    list.innerHTML = symptoms.slice(-10).reverse().map(s => `
-      <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
-        <div>
-          <span class="font-medium capitalize">${s.type.replace('_', ' ')}</span>
-          <span class="text-xs text-gray-400 ml-2">${new Date(s.createdAt).toLocaleDateString()}</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="text-lg font-bold ${s.severity >= 7 ? 'text-accent-red' : s.severity >= 4 ? 'text-accent-yellow' : 'text-accent-green'}">
-            ${s.severity}
-          </span>
-          <span class="text-xs text-gray-500">/10</span>
-        </div>
-      </div>
-    `).join('');
+  try {
+    // Fetch symptoms and vitals in parallel for correlation
+    const [symptoms, vitals] = await Promise.all([
+      apiGet('/api/symptoms'),
+      apiGet('/api/vitals')
+    ]);
+    
+    console.log('DEBUG: Symptoms data:', symptoms?.length, 'records');
+    console.log('DEBUG: Vitals data:', vitals?.length, 'records');
+    
+    // Parse vitals HRV values
+    let parsedVitals = [];
+    if (vitals && Array.isArray(vitals)) {
+      parsedVitals = vitals.map(v => ({
+        ...v,
+        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+        date: v.date || (v.created_at ? v.created_at.split('T')[0] : null)
+      })).filter(v => v.hrv !== null && !isNaN(v.hrv));
+    }
+    
+    // Store globally for filtering
+    window.allSymptoms = symptoms || [];
+    window.vitalsData = parsedVitals;
+    
+    // Get current filter
+    const filterType = document.getElementById('symptom-filter')?.value || 'all';
+    
+    // Filter symptoms
+    let filteredSymptoms = window.allSymptoms;
+    if (filterType !== 'all') {
+      filteredSymptoms = window.allSymptoms.filter(s => s.type === filterType);
+    }
+    
+    // Render components
+    renderSymptomsList(filteredSymptoms, parsedVitals);
+    renderSymptomsChart(window.allSymptoms, filterType);
+    renderBloatingChart(window.allSymptoms, parsedVitals);
+    renderSymptomFrequency(window.allSymptoms);
+    renderCorrelations(window.allSymptoms, parsedVitals);
+    
+    console.log('=== DEBUG: loadSymptoms() END ===');
+  } catch (err) {
+    console.error('DEBUG: loadSymptoms() ERROR:', err);
+    const list = document.getElementById('recent-symptoms-list');
+    if (list) {
+      list.innerHTML = '<p class="text-red-400">Error loading symptoms</p>';
+    }
   }
-  
-  // Chart
-  renderSymptomsChart(trends);
 }
 
-function renderSymptomsChart(trends) {
+// Filter symptoms by type
+function filterSymptoms() {
+  loadSymptoms();
+}
+
+// Render symptoms list with HRV correlation
+function renderSymptomsList(symptoms, vitals) {
+  const list = document.getElementById('recent-symptoms-list');
+  if (!list) return;
+  
+  if (symptoms.length === 0) {
+    list.innerHTML = '<p class="text-gray-400">No symptoms logged yet</p>';
+    return;
+  }
+  
+  // Sort by date descending
+  const sortedSymptoms = [...symptoms].sort((a, b) => 
+    new Date(b.created_at || b.date) - new Date(a.created_at || a.date)
+  );
+  
+  list.innerHTML = sortedSymptoms.slice(0, 20).map(s => {
+    const date = new Date(s.created_at || s.date);
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const timeStr = s.time || date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    
+    // Find HRV for this date
+    const symptomDate = (s.date || s.created_at?.split('T')[0]);
+    const matchingVital = vitals.find(v => v.date === symptomDate);
+    const hrvValue = matchingVital ? matchingVital.hrv : null;
+    
+    const severityColor = s.severity >= 7 ? 'text-accent-red' : 
+                          s.severity >= 4 ? 'text-accent-yellow' : 'text-accent-green';
+    const severityBg = s.severity >= 7 ? 'bg-red-900 bg-opacity-30 border-red-700' : 
+                       s.severity >= 4 ? 'bg-yellow-900 bg-opacity-30 border-yellow-700' : 
+                       'bg-green-900 bg-opacity-30 border-green-700';
+    
+    return `
+      <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg ${severityBg} border">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="font-medium capitalize">${s.type.replace(/_/g, ' ')}</span>
+            ${s.time ? `<span class="text-xs text-gray-500">at ${s.time}</span>` : ''}
+          </div>
+          <div class="flex items-center gap-3 text-xs text-gray-400 mt-1">
+            <span>${dateStr}</span>
+            ${hrvValue ? `<span class="text-primary-400">💓 HRV: ${Math.round(hrvValue)}ms</span>` : ''}
+          </div>
+          ${s.notes ? `<p class="text-xs text-gray-500 mt-1">${s.notes}</p>` : ''}
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <div class="flex items-center gap-1">
+            <span class="text-2xl font-bold ${severityColor}">${s.severity}</span>
+            <span class="text-xs text-gray-500">/10</span>
+          </div>
+          ${hrvValue ? `
+            <span class="text-xs ${hrvValue < 51 ? 'text-red-400' : hrvValue < 61 ? 'text-yellow-400' : 'text-green-400'}">
+              HRV ${hrvValue < 51 ? '🔴' : hrvValue < 61 ? '🟡' : '🟢'}
+            </span>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Render main symptoms chart with optional filtering
+function renderSymptomsChart(symptoms, filterType = 'all') {
   const ctx = document.getElementById('symptoms-chart');
   if (!ctx) return;
   
-  if (charts.symptoms) charts.symptoms.destroy();
-  
-  const labels = [];
-  const datasets = [];
-  const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-  
-  if (trends && Object.keys(trends).length > 0) {
-    // Get all dates
-    Object.values(trends).forEach(arr => {
-      arr.forEach(item => {
-        const date = item.date?.split('T')[0] || item.date;
-        if (!labels.includes(date)) labels.push(date);
-      });
-    });
-    labels.sort();
-    
-    // Create datasets
-    Object.entries(trends).forEach(([type, data], idx) => {
-      const dataPoints = labels.map(date => {
-        const entry = data.find(d => (d.date?.split('T')[0] || d.date) === date);
-        return entry ? entry.severity : null;
-      });
-      
-      datasets.push({
-        label: type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        data: dataPoints,
-        borderColor: colors[idx % colors.length],
-        backgroundColor: colors[idx % colors.length] + '20',
-        tension: 0.4,
-        fill: true
-      });
-    });
+  if (charts.symptoms) {
+    charts.symptoms.destroy();
+    charts.symptoms = null;
   }
+  
+  if (!symptoms || symptoms.length === 0) {
+    return;
+  }
+  
+  // Filter by type if specified
+  let filteredData = symptoms;
+  if (filterType !== 'all') {
+    filteredData = symptoms.filter(s => s.type === filterType);
+  }
+  
+  // Group by date and type
+  const dataByType = {};
+  filteredData.forEach(s => {
+    const date = s.date || (s.created_at ? s.created_at.split('T')[0] : null);
+    if (!date) return;
+    
+    if (!dataByType[s.type]) dataByType[s.type] = {};
+    if (!dataByType[s.type][date]) dataByType[s.type][date] = [];
+    dataByType[s.type][date].push(s.severity);
+  });
+  
+  // Get all unique dates
+  const allDates = [...new Set(filteredData.map(s => s.date || (s.created_at ? s.created_at.split('T')[0] : null)))].filter(Boolean).sort();
+  const last30Days = allDates.slice(-30);
+  
+  // Create datasets
+  const colors = {
+    bloating: '#f59e0b',
+    histamine_reaction: '#ef4444',
+    brain_fog: '#8b5cf6',
+    fatigue: '#6366f1',
+    nausea: '#10b981',
+    cramping: '#ec4899',
+    gas: '#06b6d4',
+    heartburn: '#f97316',
+    diarrhea: '#dc2626',
+    constipation: '#78716c',
+    other: '#9ca3af'
+  };
+  
+  const datasets = Object.entries(dataByType).map(([type, dateData]) => {
+    const data = last30Days.map(date => {
+      const severities = dateData[date];
+      if (!severities) return null;
+      // Average if multiple entries per day
+      return Math.round(severities.reduce((a, b) => a + b, 0) / severities.length);
+    });
+    
+    return {
+      label: type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      data,
+      borderColor: colors[type] || colors.other,
+      backgroundColor: (colors[type] || colors.other) + '20',
+      tension: 0.4,
+      fill: true,
+      pointRadius: 4,
+      spanGaps: true
+    };
+  });
   
   charts.symptoms = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets },
+    data: {
+      labels: last30Days.map(d => d.slice(5)), // MM-DD format
+      datasets
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#9ca3af' } }
+        legend: { 
+          labels: { color: '#9ca3af' },
+          position: 'bottom'
+        },
+        tooltip: {
+          backgroundColor: '#1f2937',
+          titleColor: '#e5e7eb',
+          bodyColor: '#e5e7eb'
+        }
       },
       scales: {
         y: {
           min: 0,
           max: 10,
           grid: { color: '#374151' },
-          ticks: { color: '#9ca3af' }
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Severity',
+            color: '#6b7280'
+          }
+        },
+        x: {
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af', maxTicksLimit: 10 }
+        }
+      }
+    }
+  });
+}
+
+// Render bloating-specific trend chart with HRV overlay
+function renderBloatingChart(symptoms, vitals) {
+  const ctx = document.getElementById('bloating-chart');
+  if (!ctx) return;
+  
+  if (charts.bloating) {
+    charts.bloating.destroy();
+    charts.bloating = null;
+  }
+  
+  // Get bloating symptoms
+  const bloatingData = (symptoms || [])
+    .filter(s => s.type === 'bloating')
+    .map(s => ({
+      date: s.date || (s.created_at ? s.created_at.split('T')[0] : null),
+      severity: s.severity
+    }))
+    .filter(s => s.date)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  
+  if (bloatingData.length === 0) {
+    // Show empty state
+    return;
+  }
+  
+  const labels = bloatingData.map(d => d.date.slice(5)); // MM-DD
+  const severityData = bloatingData.map(d => d.severity);
+  
+  // Match HRV data
+  const hrvData = bloatingData.map(d => {
+    const vital = vitals.find(v => v.date === d.date);
+    return vital ? vital.hrv : null;
+  });
+  
+  charts.bloating = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Bloating Severity',
+          data: severityData,
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          tension: 0.4,
+          fill: true,
+          pointRadius: 5,
+          pointBackgroundColor: '#f59e0b',
+          yAxisID: 'y'
+        },
+        {
+          label: 'HRV (ms)',
+          data: hrvData,
+          borderColor: '#3b82f6',
+          backgroundColor: '#3b82f6',
+          borderWidth: 0,
+          pointRadius: 6,
+          pointStyle: 'circle',
+          showLine: false,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#9ca3af', usePointStyle: true }
+        },
+        tooltip: {
+          backgroundColor: '#1f2937',
+          titleColor: '#e5e7eb',
+          bodyColor: '#e5e7eb',
+          callbacks: {
+            label: function(context) {
+              if (context.dataset.label === 'Bloating Severity') {
+                return `Bloating: ${context.parsed.y}/10`;
+              }
+              if (context.dataset.label === 'HRV (ms)') {
+                return context.parsed.y ? `HRV: ${Math.round(context.parsed.y)} ms` : 'HRV: No data';
+              }
+              return `${context.dataset.label}: ${context.parsed.y}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          min: 0,
+          max: 10,
+          grid: { color: '#374151' },
+          ticks: { color: '#9ca3af' },
+          title: {
+            display: true,
+            text: 'Severity',
+            color: '#f59e0b'
+          }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          min: 30,
+          max: 100,
+          grid: { drawOnChartArea: false },
+          ticks: { color: '#3b82f6' },
+          title: {
+            display: true,
+            text: 'HRV (ms)',
+            color: '#3b82f6'
+          }
         },
         x: {
           grid: { color: '#374151' },
@@ -939,6 +1207,218 @@ function renderSymptomsChart(trends) {
       }
     }
   });
+}
+
+// Render symptom frequency summary
+function renderSymptomFrequency(symptoms) {
+  const container = document.getElementById('symptom-frequency');
+  if (!container) return;
+  
+  if (!symptoms || symptoms.length === 0) {
+    container.innerHTML = '<p class="text-gray-400">No symptoms logged in the last 30 days</p>';
+    return;
+  }
+  
+  // Count by type (last 30 days)
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 30);
+  
+  const counts = {};
+  symptoms.forEach(s => {
+    const date = new Date(s.date || s.created_at);
+    if (date >= cutoffDate) {
+      counts[s.type] = (counts[s.type] || 0) + 1;
+    }
+  });
+  
+  // Calculate averages
+  const averages = {};
+  symptoms.forEach(s => {
+    const date = new Date(s.date || s.created_at);
+    if (date >= cutoffDate) {
+      if (!averages[s.type]) averages[s.type] = { total: 0, count: 0 };
+      averages[s.type].total += s.severity;
+      averages[s.type].count++;
+    }
+  });
+  
+  const sortedTypes = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  
+  if (sortedTypes.length === 0) {
+    container.innerHTML = '<p class="text-gray-400">No symptoms in the last 30 days</p>';
+    return;
+  }
+  
+  const typeIcons = {
+    bloating: '💨',
+    histamine_reaction: '🔴',
+    brain_fog: '🧠',
+    fatigue: '😴',
+    nausea: '🤢',
+    cramping: '⚡',
+    gas: '💨',
+    heartburn: '🔥',
+    diarrhea: '💩',
+    constipation: '🚫',
+    other: '📋'
+  };
+  
+  container.innerHTML = sortedTypes.map(([type, count]) => {
+    const avg = averages[type] ? (averages[type].total / averages[type].count).toFixed(1) : '0';
+    const icon = typeIcons[type] || '📋';
+    const typeLabel = type.replace(/_/g, ' ');
+    
+    // Color based on average severity
+    const avgSeverity = parseFloat(avg);
+    const colorClass = avgSeverity >= 7 ? 'text-red-400' : avgSeverity >= 4 ? 'text-yellow-400' : 'text-green-400';
+    
+    return `
+      <div class="flex items-center justify-between p-2 bg-gray-800 rounded-lg">
+        <div class="flex items-center gap-2">
+          <span>${icon}</span>
+          <span class="capitalize text-sm">${typeLabel}</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-gray-500">${count}×</span>
+          <span class="text-sm font-bold ${colorClass}">${avg}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Render correlation insights
+function renderCorrelations(symptoms, vitals) {
+  const container = document.getElementById('correlation-panel');
+  if (!container) return;
+  
+  if (!symptoms || symptoms.length === 0 || !vitals || vitals.length === 0) {
+    container.innerHTML = `
+      <div class="p-3 bg-gray-800 rounded-lg">
+        <p class="text-gray-400">Start logging symptoms to see correlations with HRV, sleep, and meals.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const insights = [];
+  
+  // Calculate HRV correlation
+  const symptomsWithHRV = symptoms.filter(s => {
+    const date = s.date || (s.created_at ? s.created_at.split('T')[0] : null);
+    return vitals.some(v => v.date === date);
+  });
+  
+  if (symptomsWithHRV.length >= 3) {
+    // Check if low HRV correlates with symptoms
+    const lowHRVSymptoms = symptomsWithHRV.filter(s => {
+      const date = s.date || (s.created_at ? s.created_at.split('T')[0] : null);
+      const vital = vitals.find(v => v.date === date);
+      return vital && vital.hrv < 51 && s.severity >= 5;
+    });
+    
+    if (lowHRVSymptoms.length >= 2) {
+      insights.push({
+        icon: '💓',
+        title: 'Low HRV = Higher Symptoms',
+        text: `${lowHRVSymptoms.length} times your HRV was below 51ms when symptoms were severe.`,
+        color: 'yellow'
+      });
+    }
+    
+    // Check if high HRV correlates with low symptoms
+    const highHRVNoSymptoms = symptomsWithHRV.filter(s => {
+      const date = s.date || (s.created_at ? s.created_at.split('T')[0] : null);
+      const vital = vitals.find(v => v.date === date);
+      return vital && vital.hrv >= 61 && s.severity <= 3;
+    });
+    
+    if (highHRVNoSymptoms.length >= 2) {
+      insights.push({
+        icon: '✅',
+        title: 'Good HRV = Milder Symptoms',
+        text: `When HRV is above 61ms, symptoms tend to be milder.`,
+        color: 'green'
+      });
+    }
+  }
+  
+  // Bloating trend analysis
+  const bloatingEntries = symptoms.filter(s => s.type === 'bloating');
+  if (bloatingEntries.length >= 5) {
+    const recentBloating = bloatingEntries.slice(-5);
+    const avgRecent = recentBloating.reduce((sum, s) => sum + s.severity, 0) / recentBloating.length;
+    const olderBloating = bloatingEntries.slice(-10, -5);
+    
+    if (olderBloating.length >= 3) {
+      const avgOlder = olderBloating.reduce((sum, s) => sum + s.severity, 0) / olderBloating.length;
+      
+      if (avgRecent < avgOlder - 1) {
+        insights.push({
+          icon: '📉',
+          title: 'Bloating Improving',
+          text: `Average bloating decreased from ${avgOlder.toFixed(1)} to ${avgRecent.toFixed(1)} in the last 5 entries.`,
+          color: 'green'
+        });
+      } else if (avgRecent > avgOlder + 1) {
+        insights.push({
+          icon: '📈',
+          title: 'Bloating Increasing',
+          text: `Average bloating increased from ${avgOlder.toFixed(1)} to ${avgRecent.toFixed(1)}.`,
+          color: 'red'
+        });
+      }
+    }
+  }
+  
+  // Most common symptom
+  const typeCounts = {};
+  symptoms.forEach(s => {
+    typeCounts[s.type] = (typeCounts[s.type] || 0) + 1;
+  });
+  const mostCommon = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+  
+  if (mostCommon && mostCommon[1] >= 3) {
+    insights.push({
+      icon: '🔍',
+      title: 'Most Common Symptom',
+      text: `${mostCommon[0].replace(/_/g, ' ')} has been logged ${mostCommon[1]} times.`,
+      color: 'blue'
+    });
+  }
+  
+  if (insights.length === 0) {
+    container.innerHTML = `
+      <div class="p-3 bg-gray-800 rounded-lg">
+        <p class="text-gray-400">Keep logging symptoms to generate personalized insights.</p>
+        <p class="text-xs text-gray-500 mt-1">${symptoms.length} symptoms logged so far</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const colorClasses = {
+    green: 'border-green-500 bg-green-900 bg-opacity-20',
+    yellow: 'border-yellow-500 bg-yellow-900 bg-opacity-20',
+    red: 'border-red-500 bg-red-900 bg-opacity-20',
+    blue: 'border-blue-500 bg-blue-900 bg-opacity-20'
+  };
+  
+  container.innerHTML = insights.map(i => `
+    <div class="p-3 rounded-lg border-l-4 ${colorClasses[i.color] || colorClasses.blue}">
+      <div class="flex items-start gap-3">
+        <span class="text-xl">${i.icon}</span>
+        <div>
+          <div class="font-medium">${i.title}</div>
+          <p class="text-sm text-gray-400">${i.text}</p>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderSymptomsChartOld(trends) {
+  // Legacy function - replaced by renderSymptomsChart above
 }
 
 // Log Symptom
