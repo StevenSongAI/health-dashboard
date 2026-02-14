@@ -7,15 +7,15 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// PostgreSQL connection - lazy initialization
+// PostgreSQL connection - initialize immediately if DATABASE_URL is available
 let pool = null;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  });
+}
 function getPool() {
-  if (!pool && process.env.DATABASE_URL) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-    });
-  }
   return pool;
 }
 
@@ -27,6 +27,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize database tables
 async function initDatabase() {
+  if (!getPool()) {
+    console.log('DATABASE_URL not set, skipping DB initialization');
+    return;
+  }
   const client = await getPool().connect();
   try {
     await client.query(`
