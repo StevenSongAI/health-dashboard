@@ -4782,11 +4782,19 @@ function updateProtocolCard(protocol) {
     return;
   }
   
-  // Calculate current day from startDate
-  const startDate = new Date(protocol.startDate);
-  const today = new Date();
-  const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
-  const currentDay = Math.max(1, dayDiff);
+  // Use API day value if available (phase.day), otherwise calculate from startDate
+  let currentDay;
+  if (protocol.phase && protocol.phase.day) {
+    currentDay = protocol.phase.day;
+  } else if (protocol.day) {
+    currentDay = protocol.day;
+  } else {
+    // Calculate current day from startDate as fallback
+    const startDate = new Date(protocol.startDate);
+    const today = new Date();
+    const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    currentDay = Math.max(1, dayDiff);
+  }
   const totalDays = protocol.totalDays || 37; // Default to extended protocol
   
   dayEl.textContent = currentDay;
