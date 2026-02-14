@@ -2833,7 +2833,28 @@ function updateProtocolCard(protocol) {
     return;
   }
   
-  // Calculate current day
+  // Check if we have valid protocol data with startDate
+  if (!protocol.startDate) {
+    // Try to get from phase or use defaults
+    const currentDay = protocol.currentDay || protocol.day || 25; // Default to Day 25
+    const totalDays = protocol.totalDays || 37;
+    
+    dayEl.textContent = currentDay;
+    progressEl.textContent = `Day ${currentDay} of ${totalDays}`;
+    
+    card.className = card.className.replace(/status-(green|yellow|red|blue)/g, '');
+    const progress = currentDay / totalDays;
+    if (progress >= 0.75) {
+      card.classList.add('status-green');
+    } else if (progress >= 0.25) {
+      card.classList.add('status-blue');
+    } else {
+      card.classList.add('status-yellow');
+    }
+    return;
+  }
+  
+  // Calculate current day from startDate
   const startDate = new Date(protocol.startDate);
   const today = new Date();
   const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
