@@ -324,22 +324,44 @@ async function loadOverview() {
     `).join('');
   }
   
-  // Alerts
+  // Alerts - Merge server alerts with automated trend-based alerts
   const alertsList = document.getElementById('alerts-list');
-  if (data.alerts?.length > 0) {
-    alertsList.innerHTML = data.alerts.map(a => `
-      <div class="flex items-center gap-3 p-3 ${a.dismissed ? 'bg-gray-800 opacity-50' : 'bg-gray-800'} rounded-lg">
-        <span class="${a.priority === 'high' ? 'text-accent-red' : a.priority === 'medium' ? 'text-accent-yellow' : 'text-accent-blue'}">
-          ${a.priority === 'high' ? '🔴' : a.priority === 'medium' ? '🟡' : '🔵'}
-        </span>
+  
+  // Get automated alerts from trend analysis
+  const automatedAlerts = await checkAlerts();
+  
+  // Merge with server alerts
+  const allAlerts = [
+    ...automatedAlerts,
+    ...(data.alerts || [])
+  ];
+  
+  // Sort by priority (high -> medium -> low)
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  allAlerts.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  
+  if (allAlerts.length > 0) {
+    alertsList.innerHTML = allAlerts.map(a => `
+      <div class="flex items-center gap-3 p-3 ${a.dismissed ? 'bg-gray-800 opacity-50' : 'bg-gray-800'} rounded-lg border-l-4 ${
+        a.priority === 'high' ? 'border-accent-red' : 
+        a.priority === 'medium' ? 'border-accent-yellow' : 
+        'border-accent-green'
+      }">
+        <span class="text-lg">${a.icon || (a.priority === 'high' ? '🔴' : a.priority === 'medium' ? '🟡' : '🟢')}</span>
         <div class="flex-1">
-          <div class="text-sm">${a.message}</div>
+          <div class="text-sm font-medium">${a.message}</div>
+          ${a.recommendation ? `<div class="text-xs text-gray-400 mt-1">${a.recommendation}</div>` : ''}
           ${a.details ? `<div class="text-xs text-gray-400">${a.details}</div>` : ''}
         </div>
       </div>
     `).join('');
   } else {
-    alertsList.innerHTML = '<p class="text-gray-400">No active alerts</p>';
+    alertsList.innerHTML = `
+      <div class="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-green">
+        <span class="text-lg">✅</span>
+        <div class="text-sm text-gray-300">No active alerts - all systems normal</div>
+      </div>
+    `;
   }
 }
 

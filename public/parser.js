@@ -165,8 +165,8 @@ function parseSymptom(text) {
     const symptomName = match[1].toLowerCase();
     const severity = parseInt(match[2], 10);
     
-    // Validate it's a known symptom word (exclude common non-symptom words)
-    const nonSymptoms = ['my', 'the', 'a', 'an', 'this', 'that', 'it'];
+    // Validate it's a known symptom word (exclude common non-symptom words and action words)
+    const nonSymptoms = ['my', 'the', 'a', 'an', 'this', 'that', 'it', 'took', 'had', 'got', 'have', 'was', 'is', 'are', 'been'];
     if (!nonSymptoms.includes(symptomName)) {
       return {
         type: 'symptom',
