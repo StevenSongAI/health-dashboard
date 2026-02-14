@@ -587,8 +587,14 @@
         <!-- Quick Log Meal -->
         <div class="card p-6 mb-6">
           <h3 class="text-lg font-semibold mb-4">Quick Log Meal</h3>
+          
+          <!-- Meal Templates Button -->
+          <button type="button" onclick="showMealTemplates()" class="w-full mb-4 bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg touch-target text-sm">
+            🥩 Show Carnivore Templates
+          </button>
+          
           <form id="meal-form" class="space-y-4">
-            <div class="grid md:grid-cols-3 gap-4">
+            <div class="grid md:grid-cols-4 gap-4">
               <div>
                 <label class="block text-sm mb-1">Meal Type</label>
                 <select id="meal-type" class="w-full p-3 rounded-lg touch-target">
@@ -597,6 +603,10 @@
                   <option value="dinner">Dinner</option>
                   <option value="snack">Snack</option>
                 </select>
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Time</label>
+                <input type="time" id="meal-time" class="w-full p-3 rounded-lg touch-target">
               </div>
               <div class="md:col-span-2">
                 <label class="block text-sm mb-1">Foods Eaten</label>

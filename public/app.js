@@ -1836,25 +1836,416 @@ async function logSymptom() {
   showToast('Symptom logged!');
 }
 
-// Load Meals
+// ============ CARNIVORE MEALS FUNCTIONALITY ============
+
+// Carnivore food database with macros (protein, fat per 100g)
+const CARNIVORE_FOODS = {
+  // Beef
+  'ribeye': { protein: 24, fat: 22, category: 'beef', emoji: '🥩' },
+  'ribeye steak': { protein: 24, fat: 22, category: 'beef', emoji: '🥩' },
+  'sirloin': { protein: 26, fat: 12, category: 'beef', emoji: '🥩' },
+  'sirloin steak': { protein: 26, fat: 12, category: 'beef', emoji: '🥩' },
+  'tenderloin': { protein: 28, fat: 8, category: 'beef', emoji: '🥩' },
+  'filet mignon': { protein: 28, fat: 8, category: 'beef', emoji: '🥩' },
+  'ny strip': { protein: 25, fat: 15, category: 'beef', emoji: '🥩' },
+  'new york strip': { protein: 25, fat: 15, category: 'beef', emoji: '🥩' },
+  'porterhouse': { protein: 24, fat: 18, category: 'beef', emoji: '🥩' },
+  't-bone': { protein: 24, fat: 18, category: 'beef', emoji: '🥩' },
+  'flank steak': { protein: 27, fat: 8, category: 'beef', emoji: '🥩' },
+  'skirt steak': { protein: 26, fat: 12, category: 'beef', emoji: '🥩' },
+  'brisket': { protein: 20, fat: 28, category: 'beef', emoji: '🥩' },
+  'short ribs': { protein: 18, fat: 30, category: 'beef', emoji: '🥩' },
+  'oxtail': { protein: 19, fat: 25, category: 'beef', emoji: '🥩' },
+  'chuck roast': { protein: 22, fat: 20, category: 'beef', emoji: '🥩' },
+  'ground beef': { protein: 20, fat: 15, category: 'beef', emoji: '🍔' },
+  'ground beef 80/20': { protein: 18, fat: 22, category: 'beef', emoji: '🍔' },
+  'ground beef 85/15': { protein: 20, fat: 18, category: 'beef', emoji: '🍔' },
+  'ground beef 90/10': { protein: 22, fat: 12, category: 'beef', emoji: '🍔' },
+  // Lamb
+  'lamb chop': { protein: 25, fat: 18, category: 'lamb', emoji: '🥩' },
+  'lamb rack': { protein: 26, fat: 16, category: 'lamb', emoji: '🥩' },
+  'leg of lamb': { protein: 27, fat: 14, category: 'lamb', emoji: '🥩' },
+  'ground lamb': { protein: 23, fat: 20, category: 'lamb', emoji: '🍔' },
+  // Poultry
+  'chicken thigh': { protein: 24, fat: 12, category: 'poultry', emoji: '🍗' },
+  'chicken wing': { protein: 20, fat: 18, category: 'poultry', emoji: '🍗' },
+  'chicken drumstick': { protein: 22, fat: 14, category: 'poultry', emoji: '🍗' },
+  'chicken breast': { protein: 31, fat: 4, category: 'poultry', emoji: '🍗' },
+  'turkey': { protein: 29, fat: 5, category: 'poultry', emoji: '🦃' },
+  'duck': { protein: 23, fat: 22, category: 'poultry', emoji: '🦆' },
+  'duck breast': { protein: 23, fat: 22, category: 'poultry', emoji: '🦆' },
+  // Pork
+  'pork chop': { protein: 25, fat: 14, category: 'pork', emoji: '🥓' },
+  'pork belly': { protein: 15, fat: 35, category: 'pork', emoji: '🥓' },
+  'bacon': { protein: 14, fat: 40, category: 'pork', emoji: '🥓' },
+  'pork shoulder': { protein: 22, fat: 20, category: 'pork', emoji: '🥓' },
+  'baby back ribs': { protein: 20, fat: 25, category: 'pork', emoji: '🥓' },
+  // Fish
+  'salmon': { protein: 22, fat: 14, category: 'fish', emoji: '🐟' },
+  'salmon fillet': { protein: 22, fat: 14, category: 'fish', emoji: '🐟' },
+  'mackerel': { protein: 24, fat: 18, category: 'fish', emoji: '🐟' },
+  'sardines': { protein: 25, fat: 15, category: 'fish', emoji: '🐟' },
+  'herring': { protein: 23, fat: 16, category: 'fish', emoji: '🐟' },
+  'anchovies': { protein: 28, fat: 10, category: 'fish', emoji: '🐟' },
+  'tuna': { protein: 29, fat: 5, category: 'fish', emoji: '🐟' },
+  'tuna steak': { protein: 29, fat: 5, category: 'fish', emoji: '🐟' },
+  'cod': { protein: 23, fat: 1, category: 'fish', emoji: '🐟' },
+  'halibut': { protein: 24, fat: 3, category: 'fish', emoji: '🐟' },
+  'trout': { protein: 24, fat: 8, category: 'fish', emoji: '🐟' },
+  // Shellfish
+  'shrimp': { protein: 24, fat: 1, category: 'shellfish', emoji: '🦐' },
+  'prawns': { protein: 24, fat: 1, category: 'shellfish', emoji: '🦐' },
+  'scallops': { protein: 21, fat: 2, category: 'shellfish', emoji: '🐚' },
+  'oysters': { protein: 9, fat: 3, category: 'shellfish', emoji: '🦪' },
+  'mussels': { protein: 24, fat: 4, category: 'shellfish', emoji: '🦪' },
+  'clams': { protein: 13, fat: 1, category: 'shellfish', emoji: '🦪' },
+  'crab': { protein: 20, fat: 2, category: 'shellfish', emoji: '🦀' },
+  'lobster': { protein: 22, fat: 2, category: 'shellfish', emoji: '🦞' },
+  // Organs
+  'liver': { protein: 21, fat: 5, category: 'organ', emoji: '🫀' },
+  'beef liver': { protein: 21, fat: 5, category: 'organ', emoji: '🫀' },
+  'chicken liver': { protein: 24, fat: 6, category: 'organ', emoji: '🫀' },
+  'heart': { protein: 26, fat: 5, category: 'organ', emoji: '🫀' },
+  'beef heart': { protein: 26, fat: 5, category: 'organ', emoji: '🫀' },
+  'chicken heart': { protein: 26, fat: 5, category: 'organ', emoji: '🫀' },
+  'kidney': { protein: 25, fat: 4, category: 'organ', emoji: '🫀' },
+  'beef kidney': { protein: 25, fat: 4, category: 'organ', emoji: '🫀' },
+  'tongue': { protein: 22, fat: 18, category: 'organ', emoji: '👅' },
+  'beef tongue': { protein: 22, fat: 18, category: 'organ', emoji: '👅' },
+  'sweetbreads': { protein: 20, fat: 12, category: 'organ', emoji: '🫀' },
+  'brain': { protein: 12, fat: 10, category: 'organ', emoji: '🧠' },
+  'marrow': { protein: 7, fat: 85, category: 'organ', emoji: '🦴' },
+  'bone marrow': { protein: 7, fat: 85, category: 'organ', emoji: '🦴' },
+  // Eggs & Dairy
+  'eggs': { protein: 13, fat: 11, category: 'eggs', emoji: '🥚' },
+  'egg': { protein: 6, fat: 5, category: 'eggs', emoji: '🥚' },
+  'butter': { protein: 1, fat: 81, category: 'dairy', emoji: '🧈' },
+  'ghee': { protein: 0, fat: 99, category: 'dairy', emoji: '🧈' },
+  'cheese': { protein: 25, fat: 33, category: 'dairy', emoji: '🧀' },
+  'cheddar': { protein: 25, fat: 33, category: 'dairy', emoji: '🧀' },
+  'parmesan': { protein: 35, fat: 25, category: 'dairy', emoji: '🧀' },
+  'cream': { protein: 2, fat: 35, category: 'dairy', emoji: '🥛' },
+  'heavy cream': { protein: 2, fat: 35, category: 'dairy', emoji: '🥛' },
+  // Game
+  'venison': { protein: 30, fat: 4, category: 'game', emoji: '🦌' },
+  'elk': { protein: 30, fat: 5, category: 'game', emoji: '🦌' },
+  'bison': { protein: 28, fat: 6, category: 'game', emoji: '🦬' },
+  'buffalo': { protein: 28, fat: 6, category: 'game', emoji: '🦬' },
+  'wild boar': { protein: 26, fat: 8, category: 'game', emoji: '🐗' },
+  'rabbit': { protein: 33, fat: 8, category: 'game', emoji: '🐰' },
+  // Fats
+  'tallow': { protein: 0, fat: 100, category: 'fat', emoji: '🧈' },
+  'beef tallow': { protein: 0, fat: 100, category: 'fat', emoji: '🧈' },
+  'lard': { protein: 0, fat: 100, category: 'fat', emoji: '🧈' },
+  'duck fat': { protein: 0, fat: 100, category: 'fat', emoji: '🧈' },
+  'schmaltz': { protein: 0, fat: 100, category: 'fat', emoji: '🧈' }
+};
+
+// Carnivore meal templates
+const MEAL_TEMPLATES = {
+  'ribeye_steak': { name: '🥩 Ribeye Steak', foods: 'Ribeye steak, butter, salt', protein: 60, fat: 55 },
+  'ground_beef': { name: '🍔 Ground Beef Bowl', foods: 'Ground beef 80/20, butter, salt', protein: 50, fat: 40 },
+  'salmon_fillet': { name: '🐟 Salmon Fillet', foods: 'Salmon fillet, butter, salt', protein: 45, fat: 30 },
+  'eggs_bacon': { name: '🍳 Eggs & Bacon', foods: 'Eggs, bacon, butter, salt', protein: 35, fat: 45 },
+  'lamb_chops': { name: '🥩 Lamb Chops', foods: 'Lamb chops, butter, salt', protein: 55, fat: 40 },
+  'liver_onions': { name: '🫀 Liver & Onions', foods: 'Beef liver, butter, salt', protein: 40, fat: 20 },
+  'pork_belly': { name: '🥓 Pork Belly', foods: 'Pork belly, salt', protein: 30, fat: 70 },
+  'chicken_thighs': { name: '🍗 Chicken Thighs', foods: 'Chicken thighs, butter, salt', protein: 50, fat: 35 },
+  'steak_eggs': { name: '🥩🍳 Steak & Eggs', foods: 'Sirloin steak, eggs, butter, salt', protein: 65, fat: 50 },
+  'bison_burger': { name: '🦬 Bison Burger', foods: 'Ground bison, cheddar, butter, salt', protein: 55, fat: 35 }
+};
+
+// Non-carnivore foods (for adherence calculation)
+const NON_CARNIVORE_FOODS = [
+  'rice', 'bread', 'pasta', 'potato', 'potatoes', 'sweet potato', 'sweet potatoes', 'yam', 'yams',
+  'carrot', 'carrots', 'broccoli', 'spinach', 'lettuce', 'tomato', 'tomatoes', 'onion', 'onions',
+  'garlic', 'pepper', 'peppers', 'cucumber', 'cucumbers', 'zucchini', 'squash', 'pumpkin',
+  'beans', 'lentils', 'chickpeas', 'peas', 'corn', 'oats', 'quinoa', 'wheat', 'flour',
+  'sugar', 'honey', 'maple syrup', 'fruit', 'fruits', 'apple', 'banana', 'orange', 'berry', 'berries',
+  'nuts', 'almonds', 'walnuts', 'seeds', 'oil', 'olive oil', 'coconut oil', 'avocado', 'avocados',
+  'tofu', 'tempeh', 'seitan', 'plant', 'protein powder', 'whey', 'soy', 'milk' // regular milk often includes lactose
+];
+
+// Load Meals - Enhanced with carnivore tracking
 async function loadMeals() {
-  const meals = await apiGet('/api/meals');
-  const reactions = await apiGet('/api/reactions');
+  console.log('=== DEBUG: loadMeals() START ===');
   
-  // Build reaction matrix
+  const meals = await apiGet('/api/meals');
+  console.log('DEBUG: Meals data:', meals?.length, 'records');
+  
+  // Render meal history
+  renderMealHistory(meals);
+  
+  // Render meal stats
+  renderMealStats(meals);
+  
+  // Render reaction matrix
+  renderReactionMatrix(meals);
+  
+  // Render carnivore adherence
+  renderCarnivoreAdherence(meals);
+  
+  console.log('=== DEBUG: loadMeals() END ===');
+}
+
+// Render meal history with carnivore-specific display
+function renderMealHistory(meals) {
+  const container = document.getElementById('tab-meals');
+  
+  // Check if meal history section exists, create if not
+  let historySection = document.getElementById('meal-history-section');
+  if (!historySection) {
+    // Insert after quick log form
+    const quickLogForm = document.getElementById('meal-form').parentElement;
+    historySection = document.createElement('div');
+    historySection.id = 'meal-history-section';
+    historySection.className = 'card p-6 mb-6';
+    quickLogForm.after(historySection);
+  }
+  
+  if (!meals || meals.length === 0) {
+    historySection.innerHTML = `
+      <h3 class="text-lg font-semibold mb-4">📚 Meal History</h3>
+      <div class="text-center py-8 text-gray-400">
+        <div class="text-4xl mb-4">🍽️</div>
+        <p>No meals logged yet</p>
+        <p class="text-sm mt-2">Start logging your carnivore meals above</p>
+      </div>
+    `;
+    return;
+  }
+  
+  // Sort by date descending
+  const sortedMeals = [...meals].sort((a, b) => new Date(b.date + 'T' + (b.time || '00:00')) - new Date(a.date + 'T' + (a.time || '00:00')));
+  
+  // Group by date
+  const mealsByDate = {};
+  sortedMeals.forEach(m => {
+    if (!mealsByDate[m.date]) mealsByDate[m.date] = [];
+    mealsByDate[m.date].push(m);
+  });
+  
+  let html = `
+    <h3 class="text-lg font-semibold mb-4">📚 Meal History</h3>
+    <div class="space-y-4 max-h-96 overflow-y-auto">
+  `;
+  
+  Object.entries(mealsByDate).slice(0, 14).forEach(([date, dayMeals]) => { // Show last 14 days
+    const dateObj = new Date(date);
+    const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const isToday = date === new Date().toISOString().split('T')[0];
+    
+    // Calculate daily macros
+    let dailyProtein = 0;
+    let dailyFat = 0;
+    let isCarnivoreDay = true;
+    
+    dayMeals.forEach(m => {
+      const macros = calculateMealMacros(m.foods);
+      dailyProtein += macros.protein;
+      dailyFat += macros.fat;
+      if (!isMealCarnivore(m.foods)) isCarnivoreDay = false;
+    });
+    
+    html += `
+      <div class="bg-gray-800 rounded-lg p-4 ${isToday ? 'border border-accent-green' : ''}">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <span class="font-medium ${isToday ? 'text-accent-green' : ''}">${dateStr} ${isToday ? '(Today)' : ''}</span>
+            <span class="text-xs text-gray-500 ml-2">${dayMeals.length} meal${dayMeals.length > 1 ? 's' : ''}</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs ${isCarnivoreDay ? 'text-accent-green' : 'text-accent-yellow'}">
+              ${isCarnivoreDay ? '✅ Carnivore' : '⚠️ Mixed'}
+            </span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <div class="bg-gray-900 rounded p-2 text-center">
+            <span class="text-xs text-gray-500">Protein</span>
+            <div class="font-bold text-accent-blue">${Math.round(dailyProtein)}g</div>
+          </div>
+          <div class="bg-gray-900 rounded p-2 text-center">
+            <span class="text-xs text-gray-500">Fat</span>
+            <div class="font-bold text-accent-yellow">${Math.round(dailyFat)}g</div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          ${dayMeals.map(m => {
+            const macros = calculateMealMacros(m.foods);
+            const reactionIcon = m.reaction === 'bad' ? '❌' : m.reaction === 'mild' ? '⚠️' : '✅';
+            const reactionClass = m.reaction === 'bad' ? 'text-accent-red' : m.reaction === 'mild' ? 'text-accent-yellow' : 'text-accent-green';
+            const foodEmojis = getFoodEmojis(m.foods);
+            
+            return `
+              <div class="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium capitalize">${m.meal_type || 'Meal'}</span>
+                    <span class="text-xs text-gray-500">${m.time || ''}</span>
+                  </div>
+                  <div class="text-sm text-gray-300">${foodEmojis} ${m.foods}</div>
+                  <div class="text-xs text-gray-500">
+                    ${macros.protein > 0 ? `🥩 ${Math.round(macros.protein)}g protein` : ''}
+                    ${macros.fat > 0 ? ` • 🧈 ${Math.round(macros.fat)}g fat` : ''}
+                  </div>
+                </div>
+                <div class="text-right ml-4">
+                  <span class="text-lg ${reactionClass}">${reactionIcon}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  historySection.innerHTML = html;
+}
+
+// Render meal stats
+function renderMealStats(meals) {
+  // Check if stats section exists
+  let statsSection = document.getElementById('meal-stats-section');
+  if (!statsSection) {
+    const historySection = document.getElementById('meal-history-section');
+    statsSection = document.createElement('div');
+    statsSection.id = 'meal-stats-section';
+    statsSection.className = 'card p-6 mb-6';
+    historySection.after(statsSection);
+  }
+  
+  if (!meals || meals.length === 0) {
+    statsSection.innerHTML = `
+      <h3 class="text-lg font-semibold mb-4">📊 Meal Stats</h3>
+      <div class="text-center py-4 text-gray-400">
+        <p>Log meals to see stats</p>
+      </div>
+    `;
+    return;
+  }
+  
+  // Calculate stats
+  const today = new Date().toISOString().split('T')[0];
+  const todayMeals = meals.filter(m => m.date === today);
+  
+  // Daily macros
+  let todayProtein = 0;
+  let todayFat = 0;
+  todayMeals.forEach(m => {
+    const macros = calculateMealMacros(m.foods);
+    todayProtein += macros.protein;
+    todayFat += macros.fat;
+  });
+  
+  // Weekly stats
+  const last7Days = meals.filter(m => {
+    const mealDate = new Date(m.date);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return mealDate >= weekAgo;
+  });
+  
+  const weeklyMealCount = last7Days.length;
+  const uniqueDays = new Set(last7Days.map(m => m.date)).size;
+  
+  // Average macros per day
+  let weeklyProtein = 0;
+  let weeklyFat = 0;
+  last7Days.forEach(m => {
+    const macros = calculateMealMacros(m.foods);
+    weeklyProtein += macros.protein;
+    weeklyFat += macros.fat;
+  });
+  
+  const avgProtein = uniqueDays > 0 ? Math.round(weeklyProtein / uniqueDays) : 0;
+  const avgFat = uniqueDays > 0 ? Math.round(weeklyFat / uniqueDays) : 0;
+  
+  statsSection.innerHTML = `
+    <h3 class="text-lg font-semibold mb-4">📊 Meal Stats</h3>
+    
+    <!-- Today's Summary -->
+    <div class="bg-gray-800 rounded-lg p-4 mb-4">
+      <div class="flex justify-between items-center mb-3">
+        <span class="text-sm text-gray-400">Today's Intake</span>
+        <span class="text-xs text-gray-500">${todayMeals.length} meals</span>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="text-center">
+          <div class="text-3xl font-bold text-accent-blue">${Math.round(todayProtein)}</div>
+          <div class="text-xs text-gray-500">Protein (g)</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-accent-yellow">${Math.round(todayFat)}</div>
+          <div class="text-xs text-gray-500">Fat (g)</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Weekly Summary -->
+    <div class="bg-gray-800 rounded-lg p-4 mb-4">
+      <div class="flex justify-between items-center mb-3">
+        <span class="text-sm text-gray-400">7-Day Average</span>
+        <span class="text-xs text-gray-500">${weeklyMealCount} meals / ${uniqueDays} days</span>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="text-center">
+          <div class="text-2xl font-bold text-accent-blue">${avgProtein}</div>
+          <div class="text-xs text-gray-500">Protein/day</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-accent-yellow">${avgFat}</div>
+          <div class="text-xs text-gray-500">Fat/day</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Macro Ratio -->
+    <div class="bg-gray-800 rounded-lg p-4">
+      <div class="text-sm text-gray-400 mb-3">Today's Macro Ratio</div>
+      ${todayProtein + todayFat > 0 ? `
+        <div class="flex items-center gap-2 mb-2">
+          <div class="flex-1 bg-gray-700 rounded-full h-4 overflow-hidden">
+            <div class="flex h-full">
+              <div class="bg-accent-blue h-full" style="width: ${(todayProtein / (todayProtein + todayFat)) * 100}%"></div>
+              <div class="bg-accent-yellow h-full" style="width: ${(todayFat / (todayProtein + todayFat)) * 100}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-accent-blue">🥩 Protein ${Math.round((todayProtein / (todayProtein + todayFat)) * 100)}%</span>
+          <span class="text-accent-yellow">🧈 Fat ${Math.round((todayFat / (todayProtein + todayFat)) * 100)}%</span>
+        </div>
+      ` : '<div class="text-gray-500 text-sm">No meals logged today</div>'}
+    </div>
+  `;
+}
+
+// Render reaction matrix (enhanced version)
+function renderReactionMatrix(meals) {
   const foodStats = {};
   
   meals?.forEach(m => {
     const foods = m.foods?.split(',').map(f => f.trim().toLowerCase()) || [];
     foods.forEach(food => {
-      if (!foodStats[food]) {
-        foodStats[food] = { count: 0, good: 0, neutral: 0, bad: 0 };
-      }
-      foodStats[food].count++;
+      const cleanFood = food.replace(/\s+/g, ' ').trim();
+      if (!cleanFood || cleanFood.length < 2) return;
       
-      if (m.reaction === 'bad') foodStats[food].bad++;
-      else if (m.reaction === 'none') foodStats[food].good++;
-      else foodStats[food].neutral++;
+      if (!foodStats[cleanFood]) {
+        foodStats[cleanFood] = { count: 0, good: 0, neutral: 0, bad: 0, carnivore: false };
+      }
+      foodStats[cleanFood].count++;
+      
+      if (m.reaction === 'bad') foodStats[cleanFood].bad++;
+      else if (m.reaction === 'none') foodStats[cleanFood].good++;
+      else foodStats[cleanFood].neutral++;
+      
+      // Check if carnivore food
+      if (isFoodCarnivore(cleanFood)) {
+        foodStats[cleanFood].carnivore = true;
+      }
     });
   });
   
@@ -1862,15 +2253,16 @@ async function loadMeals() {
   const foods = Object.entries(foodStats).sort((a, b) => b[1].count - a[1].count);
   
   if (foods.length > 0) {
-    matrixBody.innerHTML = foods.map(([food, stats]) => {
+    matrixBody.innerHTML = foods.slice(0, 20).map(([food, stats]) => { // Limit to top 20
       const status = stats.bad > stats.good ? 'text-accent-red' : 
                      stats.good > stats.bad ? 'text-accent-green' : 'text-accent-yellow';
       const statusText = stats.bad > stats.good ? 'Avoid' : 
                          stats.good > stats.bad ? 'Safe' : 'Caution';
+      const carnivoreBadge = stats.carnivore ? '<span class="text-xs bg-accent-green text-black px-1 rounded ml-1">🥩</span>' : '';
       
       return `
         <tr class="border-b border-gray-800">
-          <td class="p-2 capitalize">${food}</td>
+          <td class="p-2 capitalize">${food}${carnivoreBadge}</td>
           <td class="text-center p-2">${stats.count}</td>
           <td class="text-center p-2 text-accent-green">${stats.good}</td>
           <td class="text-center p-2 text-accent-yellow">${stats.neutral}</td>
@@ -1882,15 +2274,245 @@ async function loadMeals() {
   }
 }
 
-// Log Meal
+// Render carnivore adherence score
+function renderCarnivoreAdherence(meals) {
+  // Check if adherence section exists
+  let adherenceSection = document.getElementById('carnivore-adherence-section');
+  if (!adherenceSection) {
+    const statsSection = document.getElementById('meal-stats-section');
+    adherenceSection = document.createElement('div');
+    adherenceSection.id = 'carnivore-adherence-section';
+    adherenceSection.className = 'card p-6 mb-6';
+    statsSection.after(adherenceSection);
+  }
+  
+  if (!meals || meals.length === 0) {
+    adherenceSection.innerHTML = `
+      <h3 class="text-lg font-semibold mb-4">🥩 Carnivore Adherence</h3>
+      <div class="text-center py-4 text-gray-400">
+        <p>Log meals to track adherence</p>
+      </div>
+    `;
+    return;
+  }
+  
+  // Calculate adherence
+  const totalMeals = meals.length;
+  const carnivoreMeals = meals.filter(m => isMealCarnivore(m.foods)).length;
+  const adherenceScore = totalMeals > 0 ? Math.round((carnivoreMeals / totalMeals) * 100) : 0;
+  
+  // Calculate last 7 days adherence
+  const last7Days = meals.filter(m => {
+    const mealDate = new Date(m.date);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return mealDate >= weekAgo;
+  });
+  
+  const recentTotal = last7Days.length;
+  const recentCarnivore = last7Days.filter(m => isMealCarnivore(m.foods)).length;
+  const recentAdherence = recentTotal > 0 ? Math.round((recentCarnivore / recentTotal) * 100) : 0;
+  
+  // Determine status
+  let statusColor = 'text-red-400';
+  let statusBg = 'bg-red-900';
+  let statusText = 'Needs Improvement';
+  
+  if (recentAdherence >= 95) {
+    statusColor = 'text-accent-green';
+    statusBg = 'bg-green-900';
+    statusText = 'Excellent';
+  } else if (recentAdherence >= 80) {
+    statusColor = 'text-blue-400';
+    statusBg = 'bg-blue-900';
+    statusText = 'Good';
+  } else if (recentAdherence >= 60) {
+    statusColor = 'text-yellow-400';
+    statusBg = 'bg-yellow-900';
+    statusText = 'Fair';
+  }
+  
+  adherenceSection.innerHTML = `
+    <h3 class="text-lg font-semibold mb-4">🥩 Carnivore Adherence</h3>
+    
+    <!-- Overall Score -->
+    <div class="bg-gray-800 rounded-lg p-4 mb-4">
+      <div class="flex justify-between items-center mb-3">
+        <span class="text-sm text-gray-400">7-Day Adherence</span>
+        <span class="text-xs text-gray-500">${recentCarnivore}/${recentTotal} meals</span>
+      </div>
+      <div class="text-center mb-3">
+        <span class="text-5xl font-bold ${statusColor}">${recentAdherence}%</span>
+        <div class="text-sm ${statusColor} mt-1">${statusText}</div>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-3">
+        <div class="${statusBg} h-3 rounded-full transition-all duration-500" style="width: ${recentAdherence}%"></div>
+      </div>
+    </div>
+    
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-gray-800 rounded-lg p-3 text-center">
+        <div class="text-2xl font-bold text-accent-green">${carnivoreMeals}</div>
+        <div class="text-xs text-gray-500">Carnivore Meals</div>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-3 text-center">
+        <div class="text-2xl font-bold text-primary-500">${totalMeals}</div>
+        <div class="text-xs text-gray-500">Total Meals</div>
+      </div>
+    </div>
+    
+    <!-- Legend -->
+    <div class="mt-4 text-xs text-gray-500">
+      <p>✅ Carnivore = meat, fish, eggs, organs only</p>
+      <p>⚠️ Non-carnivore includes plants, grains, or dairy (except butter/ghee)</p>
+    </div>
+  `;
+}
+
+// Calculate meal macros from food text
+function calculateMealMacros(foodsText) {
+  if (!foodsText) return { protein: 0, fat: 0 };
+  
+  let totalProtein = 0;
+  let totalFat = 0;
+  
+  const foods = foodsText.toLowerCase().split(',').map(f => f.trim());
+  
+  foods.forEach(food => {
+    // Check for portion indicators
+    const portionMatch = food.match(/(\d+)\s*(g|oz|lb|lbs|pound|pounds)/);
+    let portionMultiplier = 1;
+    
+    if (portionMatch) {
+      const amount = parseInt(portionMatch[1]);
+      const unit = portionMatch[2];
+      
+      if (unit === 'g') {
+        portionMultiplier = amount / 100; // Database is per 100g
+      } else if (unit === 'oz') {
+        portionMultiplier = (amount * 28.35) / 100; // Convert oz to g, then to 100g units
+      } else if (['lb', 'lbs', 'pound', 'pounds'].includes(unit)) {
+        portionMultiplier = (amount * 453.59) / 100; // Convert lb to g, then to 100g units
+      }
+      
+      // Remove portion from food name for matching
+      food = food.replace(portionMatch[0], '').trim();
+    }
+    
+    // Match food in database
+    const matchedFood = Object.keys(CARNIVORE_FOODS).find(key => food.includes(key));
+    if (matchedFood) {
+      const foodData = CARNIVORE_FOODS[matchedFood];
+      totalProtein += foodData.protein * portionMultiplier;
+      totalFat += foodData.fat * portionMultiplier;
+    } else {
+      // Estimate for unknown foods
+      if (food.includes('steak') || food.includes('beef')) {
+        totalProtein += 25 * portionMultiplier;
+        totalFat += 15 * portionMultiplier;
+      } else if (food.includes('egg')) {
+        totalProtein += 13 * portionMultiplier;
+        totalFat += 11 * portionMultiplier;
+      }
+    }
+  });
+  
+  return { protein: totalProtein, fat: totalFat };
+}
+
+// Check if a food is carnivore
+function isFoodCarnivore(food) {
+  const lowerFood = food.toLowerCase();
+  
+  // Check if it's in our carnivore database
+  const inDatabase = Object.keys(CARNIVORE_FOODS).some(key => lowerFood.includes(key));
+  if (inDatabase) return true;
+  
+  // Check for non-carnivore ingredients
+  const hasNonCarnivore = NON_CARNIVORE_FOODS.some(nonCar => lowerFood.includes(nonCar));
+  return !hasNonCarnivore;
+}
+
+// Check if entire meal is carnivore
+function isMealCarnivore(foodsText) {
+  if (!foodsText) return false;
+  
+  const foods = foodsText.toLowerCase().split(',').map(f => f.trim());
+  return foods.every(food => isFoodCarnivore(food));
+}
+
+// Get food emojis for display
+function getFoodEmojis(foodsText) {
+  if (!foodsText) return '🍽️';
+  
+  const foods = foodsText.toLowerCase().split(',').map(f => f.trim());
+  const emojis = [];
+  
+  foods.forEach(food => {
+    const match = Object.keys(CARNIVORE_FOODS).find(key => food.includes(key));
+    if (match && !emojis.includes(CARNIVORE_FOODS[match].emoji)) {
+      emojis.push(CARNIVORE_FOODS[match].emoji);
+    }
+  });
+  
+  return emojis.slice(0, 3).join('') || '🍽️';
+}
+
+// Add meal template to form
+function applyMealTemplate(templateKey) {
+  const template = MEAL_TEMPLATES[templateKey];
+  if (!template) return;
+  
+  document.getElementById('meal-foods').value = template.foods;
+  showToast(`Template applied: ${template.name}`);
+}
+
+// Show meal templates
+function showMealTemplates() {
+  const container = document.getElementById('meal-templates-container');
+  if (container) {
+    container.classList.toggle('hidden');
+    return;
+  }
+  
+  // Create templates container
+  const form = document.getElementById('meal-form');
+  const templatesDiv = document.createElement('div');
+  templatesDiv.id = 'meal-templates-container';
+  templatesDiv.className = 'bg-gray-800 rounded-lg p-4 mb-4';
+  
+  let html = '<div class="text-sm text-gray-400 mb-3">Quick Templates:</div><div class="grid grid-cols-2 gap-2">';
+  
+  Object.entries(MEAL_TEMPLATES).forEach(([key, template]) => {
+    html += `
+      <button type="button" onclick="applyMealTemplate('${key}')" 
+              class="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-left transition-colors">
+        <div class="text-sm font-medium">${template.name}</div>
+        <div class="text-xs text-gray-500">${template.protein}g protein • ${template.fat}g fat</div>
+      </button>
+    `;
+  });
+  
+  html += '</div>';
+  templatesDiv.innerHTML = html;
+  form.before(templatesDiv);
+}
+
+// Log Meal - Enhanced with macros and time
 async function logMeal() {
+  const timeInput = document.getElementById('meal-time').value;
   const data = {
     mealType: document.getElementById('meal-type').value,
     foods: document.getElementById('meal-foods').value,
     reaction: document.getElementById('meal-reaction').value,
     notes: document.getElementById('meal-notes').value,
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    time: timeInput || new Date().toTimeString().slice(0, 5)
   };
+  
+  // Calculate macros for display
+  const macros = calculateMealMacros(data.foods);
   
   await apiPost('/api/meals', data);
   await apiPost('/api/daily-logs', { type: 'meal', ...data });
@@ -1908,11 +2530,16 @@ async function logMeal() {
   // Reset form
   document.getElementById('meal-foods').value = '';
   document.getElementById('meal-notes').value = '';
+  document.getElementById('meal-time').value = '';
   setReaction('none');
+  
+  // Hide templates if open
+  const templatesContainer = document.getElementById('meal-templates-container');
+  if (templatesContainer) templatesContainer.classList.add('hidden');
   
   loadMeals();
   loadOverview();
-  showToast('Meal logged!');
+  showToast(`Meal logged! 🥩 ${Math.round(macros.protein)}g protein, ${Math.round(macros.fat)}g fat`);
 }
 
 function setReaction(value) {
