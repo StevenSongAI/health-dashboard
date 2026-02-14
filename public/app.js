@@ -3481,3 +3481,9 @@ async function quickLogSupplement(slotKey, supplementName) {
 function refreshProtocolAdherence() {
   loadProtocolAdherence();
 }
+
+// Initialize app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('=== DEBUG: DOMContentLoaded - Starting init() ===');
+  init().catch(err => console.error('DEBUG: init() failed:', err));
+});
