@@ -255,9 +255,9 @@ function renderProtocol() {
   if (!protocolData) return;
   
   // Use symptom-based tracking, not day count
-  const phaseName = protocolData.phase || 'Kill Phase';
-  const status = protocolData.status || 'Active';
-  const daysOnProtocol = protocolData.daysOnProtocol || 0;
+  const phaseName = protocolData.phase?.name || 'Kill Phase';
+  const status = protocolData.phase?.status || 'Active';
+  const daysOnProtocol = protocolData.phase?.daysRemaining || 0;
   
   document.getElementById('protocol-phase-name').textContent = phaseName;
   document.getElementById('protocol-phase-dates').textContent = 
