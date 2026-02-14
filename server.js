@@ -88,8 +88,8 @@ async function initDatabase() {
   }
 }
 
-// Initialize on startup
-initDatabase();
+// Initialize on startup - don't block if DB fails
+initDatabase().catch(err => console.error('DB init failed:', err.message));
 
 // ============ API ROUTES ============
 
@@ -223,14 +223,14 @@ app.get('/api/vitals', async (req, res) => {
   }
 });
 
-// Default route
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Health check
+// Health check - MUST be before catch-all
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', database: 'connected' });
+});
+
+// Default route - serve index.html for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
