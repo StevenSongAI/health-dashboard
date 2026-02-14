@@ -104,11 +104,23 @@ function setupSliders() {
 
 // API Helpers
 async function apiGet(endpoint) {
+  const url = `${API_BASE}${endpoint}`;
+  console.log(`DEBUG: apiGet() fetching from: ${url}`);
   try {
-    const res = await fetch(`${API_BASE}${endpoint}`);
-    return await res.json();
+    const res = await fetch(url);
+    console.log(`DEBUG: apiGet() response status: ${res.status} ${res.statusText}`);
+    
+    if (!res.ok) {
+      console.error(`DEBUG: apiGet() HTTP error! status: ${res.status}`);
+      return null;
+    }
+    
+    const data = await res.json();
+    console.log(`DEBUG: apiGet() received data type:`, typeof data);
+    return data;
   } catch (err) {
-    console.error('API Error:', err);
+    console.error('DEBUG: apiGet() Error:', err);
+    console.error('DEBUG: apiGet() Error stack:', err.stack);
     return null;
   }
 }
@@ -410,42 +422,95 @@ async function loadOverview() {
   }
 }
 
-// Load HRV Status for Overview - UPDATED FOR APPLE HEALTH
+// Load HRV Status for Overview - UPDATED FOR APPLE HEALTH WITH DEBUG LOGGING
 async function loadHRVStatus() {
-  console.log('Loading HRV status from /api/vitals...');
+  console.log('=== DEBUG: loadHRVStatus() START ===');
+  console.log('API_BASE URL:', API_BASE);
+  
+  // Check DOM elements exist before using them
+  const hrvCurrentEl = document.getElementById('hrv-current');
+  const hrvStatusEl = document.getElementById('hrv-status');
+  const hrvRecommendationEl = document.getElementById('hrv-recommendation');
+  const hrvTrendEl = document.getElementById('hrv-trend');
+  const hrvCardEl = document.getElementById('hrv-status-card');
+  const hrvDeepSleepEl = document.getElementById('hrv-deep-sleep');
+  
+  console.log('DOM Elements found:', {
+    'hrv-current': !!hrvCurrentEl,
+    'hrv-status': !!hrvStatusEl,
+    'hrv-recommendation': !!hrvRecommendationEl,
+    'hrv-trend': !!hrvTrendEl,
+    'hrv-status-card': !!hrvCardEl,
+    'hrv-deep-sleep': !!hrvDeepSleepEl
+  });
+  
   try {
+    // TEST: Hardcoded value to verify display works
+    console.log('DEBUG: Testing with hardcoded value first...');
+    if (hrvCurrentEl) {
+      const testValue = '70.43ms (TEST)';
+      console.log('DEBUG: Setting hardcoded value:', testValue);
+      hrvCurrentEl.textContent = testValue;
+      hrvCurrentEl.className = 'text-3xl font-bold text-accent-green';
+    }
+    
     // Fetch from /api/vitals where Apple Health data is stored
+    console.log('DEBUG: Fetching from /api/vitals...');
     let vitals = await apiGet('/api/vitals');
-    console.log('Vitals data:', vitals?.length, 'records');
+    console.log('DEBUG: Raw API Response:', vitals);
+    console.log('DEBUG: Vitals data type:', typeof vitals);
+    console.log('DEBUG: Vitals is array:', Array.isArray(vitals));
+    console.log('DEBUG: Vitals length:', vitals?.length);
+    
+    if (vitals && Array.isArray(vitals)) {
+      console.log('DEBUG: First vital record:', vitals[0]);
+      console.log('DEBUG: Last vital record:', vitals[vitals.length - 1]);
+    }
     
     // Parse string values to numbers (API returns strings like "44.35")
     if (vitals && Array.isArray(vitals)) {
-      vitals = vitals.map(v => ({
-        ...v,
-        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
-        rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null
-      }));
+      console.log('DEBUG: Parsing vitals to numbers...');
+      vitals = vitals.map((v, idx) => {
+        const parsed = {
+          ...v,
+          hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+          rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null
+        };
+        if (idx < 3) console.log(`DEBUG: Parsed vital[${idx}]:`, { original: v.hrv, parsed: parsed.hrv });
+        return parsed;
+      });
+      console.log('DEBUG: Parsed vitals count:', vitals.length);
     }
     
     if (!vitals || vitals.length === 0) {
-      console.log('No vitals data found');
-      document.getElementById('hrv-current').textContent = '--';
-      document.getElementById('hrv-status').textContent = 'No data';
-      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      console.log('DEBUG: No vitals data found after parsing');
+      if (hrvCurrentEl) hrvCurrentEl.textContent = '--';
+      if (hrvStatusEl) hrvStatusEl.textContent = 'No data';
+      if (hrvRecommendationEl) hrvRecommendationEl.textContent = 'Log your HRV to see recommendations';
+      console.log('=== DEBUG: loadHRVStatus() END (no data) ===');
       return;
     }
     
     // Sort by date descending and get latest HRV entry
+    console.log('DEBUG: Sorting vitals by date...');
     const sortedVitals = vitals.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const latestVital = sortedVitals.find(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv));
+    console.log('DEBUG: Sorted vitals first 3:', sortedVitals.slice(0, 3).map(v => ({ date: v.date, hrv: v.hrv })));
     
-    console.log('Latest vital:', latestVital);
+    const latestVital = sortedVitals.find(v => {
+      const hasHRV = v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv);
+      if (hasHRV) console.log('DEBUG: Found latest vital with HRV:', v);
+      return hasHRV;
+    });
+    
+    console.log('DEBUG: Latest vital with HRV:', latestVital);
     
     if (!latestVital) {
-      console.log('No HRV data found in vitals');
-      document.getElementById('hrv-current').textContent = '--';
-      document.getElementById('hrv-status').textContent = 'No data';
-      document.getElementById('hrv-recommendation').textContent = 'Log your HRV to see recommendations';
+      console.log('DEBUG: No HRV data found in any vitals record');
+      console.log('DEBUG: Sample vitals HRV values:', sortedVitals.slice(0, 5).map(v => ({ date: v.date, hrv: v.hrv, type: typeof v.hrv })));
+      if (hrvCurrentEl) hrvCurrentEl.textContent = '--';
+      if (hrvStatusEl) hrvStatusEl.textContent = 'No HRV data in records';
+      if (hrvRecommendationEl) hrvRecommendationEl.textContent = 'Log your HRV to see recommendations';
+      console.log('=== DEBUG: loadHRVStatus() END (no HRV in records) ===');
       return;
     }
     
@@ -454,20 +519,33 @@ async function loadHRVStatus() {
     const diff = hrv - baseline;
     const diffPercent = ((diff / baseline) * 100).toFixed(0);
     
-    console.log(`HRV: ${hrv}ms, Baseline: ${baseline}ms, Diff: ${diff}ms`);
+    console.log(`DEBUG: DISPLAYING HRV - Value: ${hrv}ms, Baseline: ${baseline}ms, Diff: ${diff}ms`);
     
     // Update HRV display
-    document.getElementById('hrv-current').textContent = `${hrv}ms`;
-    document.getElementById('hrv-trend').textContent = `${diff >= 0 ? '+' : ''}${diff}ms (${diffPercent}%) vs baseline`;
+    if (hrvCurrentEl) {
+      const displayValue = `${hrv}ms`;
+      console.log('DEBUG: Setting hrv-current to:', displayValue);
+      hrvCurrentEl.textContent = displayValue;
+    } else {
+      console.error('DEBUG: hrv-current element NOT FOUND!');
+    }
+    
+    if (hrvTrendEl) {
+      const trendText = `${diff >= 0 ? '+' : ''}${diff}ms (${diffPercent}%) vs baseline`;
+      console.log('DEBUG: Setting hrv-trend to:', trendText);
+      hrvTrendEl.textContent = trendText;
+    }
     
     // Color code
-    const hrvElement = document.getElementById('hrv-current');
-    if (diff < -10) {
-      hrvElement.className = 'text-3xl font-bold text-accent-red';
-    } else if (diff < 0) {
-      hrvElement.className = 'text-3xl font-bold text-accent-yellow';
-    } else {
-      hrvElement.className = 'text-3xl font-bold text-accent-green';
+    if (hrvCurrentEl) {
+      if (diff < -10) {
+        hrvCurrentEl.className = 'text-3xl font-bold text-accent-red';
+      } else if (diff < 0) {
+        hrvCurrentEl.className = 'text-3xl font-bold text-accent-yellow';
+      } else {
+        hrvCurrentEl.className = 'text-3xl font-bold text-accent-green';
+      }
+      console.log('DEBUG: Applied color class:', hrvCurrentEl.className);
     }
     
     // Status and recommendation
@@ -490,26 +568,45 @@ async function loadHRVStatus() {
       cardBorder = 'border-accent-green';
     }
     
-    document.getElementById('hrv-status').textContent = status;
-    document.getElementById('hrv-recommendation').textContent = recommendation;
+    console.log('DEBUG: Status:', status);
+    console.log('DEBUG: Recommendation:', recommendation);
+    
+    if (hrvStatusEl) {
+      hrvStatusEl.textContent = status;
+      console.log('DEBUG: Set hrv-status');
+    }
+    if (hrvRecommendationEl) {
+      hrvRecommendationEl.textContent = recommendation;
+      console.log('DEBUG: Set hrv-recommendation');
+    }
     
     // Update card border
-    const card = document.getElementById('hrv-status-card');
-    card.className = `card p-6 mb-6 border-l-4 ${cardBorder}`;
+    if (hrvCardEl) {
+      hrvCardEl.className = `card p-6 mb-6 border-l-4 ${cardBorder}`;
+      console.log('DEBUG: Set hrv-status-card class');
+    }
     
     // Fetch latest sleep data for deep sleep info
+    console.log('DEBUG: Fetching sleep data...');
     const sleepData = await apiGet('/api/sleep');
+    console.log('DEBUG: Sleep data:', sleepData?.length, 'records');
+    
     if (sleepData && sleepData.length > 0) {
       const latestSleep = sleepData.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
       const deepSleepMin = latestSleep?.deepSleepMin || latestSleep?.deepSleepMinutes || 0;
-      if (deepSleepMin) {
-        document.getElementById('hrv-deep-sleep').textContent = `Deep sleep: ${deepSleepMin}min`;
+      console.log('DEBUG: Deep sleep minutes:', deepSleepMin);
+      if (deepSleepMin && hrvDeepSleepEl) {
+        hrvDeepSleepEl.textContent = `Deep sleep: ${deepSleepMin}min`;
       }
     }
     
+    console.log('=== DEBUG: loadHRVStatus() END SUCCESS ===');
+    
   } catch (error) {
-    console.error('Error loading HRV status:', error);
-    document.getElementById('hrv-status').textContent = 'Error loading data';
+    console.error('DEBUG: ERROR in loadHRVStatus:', error);
+    console.error('DEBUG: Error stack:', error.stack);
+    if (hrvStatusEl) hrvStatusEl.textContent = 'Error loading data';
+    console.log('=== DEBUG: loadHRVStatus() END WITH ERROR ===');
   }
 }
 
@@ -967,25 +1064,49 @@ function setReaction(value) {
 
 // Load Vitals
 async function loadVitals() {
-  const energy = await apiGet('/api/energy');
-  const sleep = await apiGet('/api/sleep');
-  let vitals = await apiGet('/api/vitals');
+  console.log('=== DEBUG: loadVitals() START ===');
   
-  // Parse string values to numbers (API returns strings like "44.35")
-  if (vitals && Array.isArray(vitals)) {
-    vitals = vitals.map(v => ({
-      ...v,
-      hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
-      rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null,
-      blood_oxygen: v.blood_oxygen !== null && v.blood_oxygen !== undefined ? parseFloat(v.blood_oxygen) : null,
-      respiratory_rate: v.respiratory_rate !== null && v.respiratory_rate !== undefined ? parseFloat(v.respiratory_rate) : null,
-      heart_rate: v.heart_rate !== null && v.heart_rate !== undefined ? parseFloat(v.heart_rate) : null
-    }));
+  try {
+    console.log('DEBUG: Fetching energy data...');
+    const energy = await apiGet('/api/energy');
+    console.log('DEBUG: Energy data:', energy?.length, 'records');
+    
+    console.log('DEBUG: Fetching sleep data...');
+    const sleep = await apiGet('/api/sleep');
+    console.log('DEBUG: Sleep data:', sleep?.length, 'records');
+    
+    console.log('DEBUG: Fetching vitals data...');
+    let vitals = await apiGet('/api/vitals');
+    console.log('DEBUG: Vitals raw data:', vitals?.length, 'records');
+    
+    // Parse string values to numbers (API returns strings like "44.35")
+    if (vitals && Array.isArray(vitals)) {
+      console.log('DEBUG: Parsing vitals...');
+      vitals = vitals.map(v => ({
+        ...v,
+        hrv: v.hrv !== null && v.hrv !== undefined ? parseFloat(v.hrv) : null,
+        rhr: v.rhr !== null && v.rhr !== undefined ? parseFloat(v.rhr) : null,
+        blood_oxygen: v.blood_oxygen !== null && v.blood_oxygen !== undefined ? parseFloat(v.blood_oxygen) : null,
+        respiratory_rate: v.respiratory_rate !== null && v.respiratory_rate !== undefined ? parseFloat(v.respiratory_rate) : null,
+        heart_rate: v.heart_rate !== null && v.heart_rate !== undefined ? parseFloat(v.heart_rate) : null
+      }));
+      console.log('DEBUG: Parsed vitals sample:', vitals.slice(0, 2));
+    }
+    
+    console.log('DEBUG: Rendering energy chart...');
+    renderEnergyChart(energy);
+    
+    console.log('DEBUG: Rendering sleep chart...');
+    renderSleepChart(sleep);
+    
+    console.log('DEBUG: Rendering HRV trend chart...');
+    renderHRVTrendChart(vitals);
+    
+    console.log('=== DEBUG: loadVitals() END ===');
+  } catch (err) {
+    console.error('DEBUG: loadVitals() ERROR:', err);
+    console.error('DEBUG: loadVitals() stack:', err.stack);
   }
-  
-  renderEnergyChart(energy);
-  renderSleepChart(sleep);
-  renderHRVTrendChart(vitals);
 }
 
 function renderHRVChart(vitals) {
@@ -1061,23 +1182,41 @@ function renderHRVChart(vitals) {
 
 // 30-Day HRV Trend Chart with color-coded points
 function renderHRVTrendChart(vitals) {
-  const ctx = document.getElementById('hrv-trend-chart');
-  if (!ctx) return;
+  console.log('=== DEBUG: renderHRVTrendChart() START ===');
   
-  if (charts.hrvTrend) charts.hrvTrend.destroy();
+  const ctx = document.getElementById('hrv-trend-chart');
+  console.log('DEBUG: hrv-trend-chart canvas found:', !!ctx);
+  
+  if (!ctx) {
+    console.error('DEBUG: hrv-trend-chart element NOT FOUND!');
+    return;
+  }
+  
+  if (charts.hrvTrend) {
+    console.log('DEBUG: Destroying existing hrvTrend chart');
+    charts.hrvTrend.destroy();
+  }
   
   if (!vitals || vitals.length === 0) {
-    // Show "No data" message
+    console.log('DEBUG: No vitals data for HRV chart');
     return;
   }
   
   // Filter for HRV records only, sort by date ascending, get last 30 days
   const hrvData = vitals
-    .filter(v => v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv))
+    .filter(v => {
+      const hasHRV = v.hrv !== null && v.hrv !== undefined && !isNaN(v.hrv);
+      if (!hasHRV) console.log('DEBUG: Filtering out vital (no HRV):', v);
+      return hasHRV;
+    })
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(-30);
   
+  console.log('DEBUG: HRV data points for chart:', hrvData.length);
+  console.log('DEBUG: HRV data sample:', hrvData.slice(0, 3));
+  
   if (hrvData.length === 0) {
+    console.log('DEBUG: No HRV data points after filtering');
     return;
   }
   
@@ -1090,6 +1229,9 @@ function renderHRVTrendChart(vitals) {
   const dataValues = hrvData.map(v => v.hrv);
   const baseline = 61;
   
+  console.log('DEBUG: Chart labels:', labels);
+  console.log('DEBUG: Chart values:', dataValues);
+  
   // Create color-coded point colors based on HRV value
   const pointColors = dataValues.map(hrv => {
     if (hrv < 51) return '#ef4444'; // Red: Critical
@@ -1099,92 +1241,99 @@ function renderHRVTrendChart(vitals) {
   
   const pointRadii = dataValues.map(() => 5);
   
-  charts.hrvTrend = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'HRV (ms)',
-        data: dataValues,
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.1)',
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        pointBackgroundColor: pointColors,
-        pointBorderColor: pointColors,
-        pointRadius: pointRadii,
-        pointHoverRadius: 7
-      }, {
-        label: 'Baseline (61ms)',
-        data: labels.map(() => baseline),
-        borderColor: '#6b7280',
-        borderDash: [5, 5],
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: false,
-        tension: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { 
-          display: false
-        },
-        tooltip: {
-          backgroundColor: '#1f2937',
-          titleColor: '#e5e7eb',
-          bodyColor: '#e5e7eb',
-          borderColor: '#374151',
-          borderWidth: 1,
-          callbacks: {
-            label: function(context) {
-              const value = context.parsed.y;
-              let status = '';
-              if (value < 51) status = ' (Critical)';
-              else if (value < 61) status = ' (Below Baseline)';
-              else status = ' (Normal)';
-              return `HRV: ${value}ms${status}`;
-            }
-          }
-        }
+  try {
+    charts.hrvTrend = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'HRV (ms)',
+          data: dataValues,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: true,
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors,
+          pointRadius: pointRadii,
+          pointHoverRadius: 7
+        }, {
+          label: 'Baseline (61ms)',
+          data: labels.map(() => baseline),
+          borderColor: '#6b7280',
+          borderDash: [5, 5],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        }]
       },
-      scales: {
-        y: {
-          min: 30,
-          max: 100,
-          grid: { color: '#374151' },
-          ticks: { 
-            color: '#9ca3af',
-            callback: function(value) {
-              return value + ' ms';
-            }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { 
+            display: false
           },
-          title: {
-            display: true,
-            text: 'HRV (ms)',
-            color: '#6b7280',
-            font: { size: 11 }
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#e5e7eb',
+            bodyColor: '#e5e7eb',
+            borderColor: '#374151',
+            borderWidth: 1,
+            callbacks: {
+              label: function(context) {
+                const value = context.parsed.y;
+                let status = '';
+                if (value < 51) status = ' (Critical)';
+                else if (value < 61) status = ' (Below Baseline)';
+                else status = ' (Normal)';
+                return `HRV: ${value}ms${status}`;
+              }
+            }
           }
         },
-        x: {
-          grid: { display: false },
-          ticks: { 
-            color: '#9ca3af',
-            maxTicksLimit: 10
+        scales: {
+          y: {
+            min: 30,
+            max: 100,
+            grid: { color: '#374151' },
+            ticks: { 
+              color: '#9ca3af',
+              callback: function(value) {
+                return value + ' ms';
+              }
+            },
+            title: {
+              display: true,
+              text: 'HRV (ms)',
+              color: '#6b7280',
+              font: { size: 11 }
+            }
           },
-          title: {
-            display: true,
-            text: 'Date',
-            color: '#6b7280',
-            font: { size: 11 }
+          x: {
+            grid: { display: false },
+            ticks: { 
+              color: '#9ca3af',
+              maxTicksLimit: 10
+            },
+            title: {
+              display: true,
+              text: 'Date',
+              color: '#6b7280',
+              font: { size: 11 }
+            }
           }
         }
       }
-    }
-  });
+    });
+    console.log('DEBUG: HRV chart created successfully');
+  } catch (err) {
+    console.error('DEBUG: Error creating HRV chart:', err);
+  }
+  
+  console.log('=== DEBUG: renderHRVTrendChart() END ===');
 }
 
 function renderEnergyChart(energy) {
@@ -1744,16 +1893,23 @@ async function generateReport(type) {
 }
 
 // Start
-init();// Sleep Tracking Functions
+init();// Load Sleep
 async function loadSleep() {
+  console.log('=== DEBUG: loadSleep() START ===');
   try {
     // Fetch sleep data
+    console.log('DEBUG: Fetching sleep data...');
     const sleepRes = await fetch(`${API_BASE}/api/sleep`);
+    console.log('DEBUG: Sleep response status:', sleepRes.status);
     let sleepData = await sleepRes.json();
+    console.log('DEBUG: Sleep raw data:', sleepData?.length, 'records');
     
     // Fetch vitals for HRV correlation
+    console.log('DEBUG: Fetching vitals for sleep correlation...');
     const vitalsRes = await fetch(`${API_BASE}/api/vitals`);
+    console.log('DEBUG: Vitals response status:', vitalsRes.status);
     let vitalsData = await vitalsRes.json();
+    console.log('DEBUG: Vitals raw data:', vitalsData?.length, 'records');
     
     // Parse vitals string values to numbers
     if (vitalsData && Array.isArray(vitalsData)) {
@@ -1765,6 +1921,8 @@ async function loadSleep() {
     
     // Map API field names to frontend expected names
     if (sleepData && Array.isArray(sleepData)) {
+      console.log('DEBUG: Mapping sleep field names...');
+      console.log('DEBUG: Sample sleep record:', sleepData[0]);
       sleepData = sleepData.map(s => ({
         ...s,
         // Map API snake_case field names to frontend camelCase names
@@ -1788,9 +1946,11 @@ async function loadSleep() {
         // Ensure date is properly parsed
         date: s.date || (s.createdAt ? s.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
       }));
+      console.log('DEBUG: Mapped sleep sample:', sleepData[0]);
     }
     
     if (sleepData && sleepData.length > 0) {
+      console.log('DEBUG: Rendering sleep components...');
       renderSleepSummary(sleepData);
       renderLatestSleep(sleepData[sleepData.length - 1]);
       renderSleepDurationChart(sleepData);
@@ -1799,15 +1959,24 @@ async function loadSleep() {
       renderSleepHRVChart(sleepData, vitalsData);
       renderSleepHistoryTable(sleepData);
     } else {
-      document.getElementById('sleep-history-table').innerHTML = `
-        <tr><td colspan="7" class="p-4 text-center text-gray-500">No sleep data yet. Start logging!</td></tr>
+      console.log('DEBUG: No sleep data to render');
+      const historyTable = document.getElementById('sleep-history-table');
+      if (historyTable) {
+        historyTable.innerHTML = `
+          <tr><td colspan="7" class="p-4 text-center text-gray-500">No sleep data yet. Start logging!</td></tr>
+        `;
+      }
+    }
+    console.log('=== DEBUG: loadSleep() END ===');
+  } catch (error) {
+    console.error('DEBUG: Error loading sleep data:', error);
+    console.error('DEBUG: Error stack:', error.stack);
+    const historyTable = document.getElementById('sleep-history-table');
+    if (historyTable) {
+      historyTable.innerHTML = `
+        <tr><td colspan="7" class="p-4 text-center text-red-500">Error loading sleep data</td></tr>
       `;
     }
-  } catch (error) {
-    console.error('Error loading sleep data:', error);
-    document.getElementById('sleep-history-table').innerHTML = `
-      <tr><td colspan="7" class="p-4 text-center text-red-500">Error loading sleep data</td></tr>
-    `;
   }
 }
 
