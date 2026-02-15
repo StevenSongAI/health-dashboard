@@ -805,6 +805,119 @@ function renderSupplementSchedule() {
   const container = document.getElementById('supplement-schedule');
   if (!container) return;
   
+  // Use API supplement data if available, otherwise fall back to hardcoded schedule
+  const apiSupplements = protocolData?.supplements || [];
+  
+  if (apiSupplements.length > 0) {
+    // Render from API data - shows current actual protocol
+    renderAPISupplementSchedule(container, apiSupplements);
+  } else {
+    // Fall back to hardcoded schedule
+    renderHardcodedSupplementSchedule(container);
+  }
+}
+
+// Render supplement schedule from API data (shows current protocol)
+function renderAPISupplementSchedule(container, supplements) {
+  let html = '<div class="space-y-3">';
+  
+  // Group by category
+  const antimicrobials = supplements.filter(s => s.category === 'Antimicrobial');
+  const prokinetics = supplements.filter(s => s.category === 'Prokinetic');
+  const others = supplements.filter(s => s.category !== 'Antimicrobial' && s.category !== 'Prokinetic');
+  
+  // Antimicrobials section
+  if (antimicrobials.length > 0) {
+    html += `
+      <div class="bg-gray-800 border-l-4 border-red-500 rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-lg">🦠</span>
+          <span class="font-medium text-white">Antimicrobials</span>
+          <span class="text-xs bg-red-600 px-2 py-0.5 rounded text-white ml-auto">Kill Phase</span>
+        </div>
+        <div class="space-y-2">
+          ${antimicrobials.map(supp => `
+            <div class="flex items-center justify-between p-2 bg-gray-700 rounded">
+              <div>
+                <div class="text-sm text-white font-medium">${supp.name}</div>
+                <div class="text-xs text-gray-400">${supp.dose}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs ${supp.timing?.includes('Skipped') ? 'text-red-400' : 'text-green-400'}">${supp.timing || 'Active'}</div>
+                ${supp.notes ? `<div class="text-xs text-gray-500">${supp.notes}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  // Prokinetics section
+  if (prokinetics.length > 0) {
+    html += `
+      <div class="bg-gray-800 border-l-4 border-blue-500 rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-lg">🌊</span>
+          <span class="font-medium text-white">Prokinetics</span>
+          <span class="text-xs bg-blue-600 px-2 py-0.5 rounded text-white ml-auto">Motility</span>
+        </div>
+        <div class="space-y-2">
+          ${prokinetics.map(supp => `
+            <div class="flex items-center justify-between p-2 bg-gray-700 rounded">
+              <div>
+                <div class="text-sm text-white font-medium">${supp.name}</div>
+                <div class="text-xs text-gray-400">${supp.dose}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs ${supp.timing?.includes('Skipped') ? 'text-yellow-400' : 'text-green-400'}">${supp.timing || 'Active'}</div>
+                ${supp.notes ? `<div class="text-xs text-gray-500">${supp.notes}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  // Others section
+  if (others.length > 0) {
+    html += `
+      <div class="bg-gray-800 border-l-4 border-gray-500 rounded-lg p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-lg">💊</span>
+          <span class="font-medium text-white">Other Supplements</span>
+        </div>
+        <div class="space-y-2">
+          ${others.map(supp => `
+            <div class="flex items-center justify-between p-2 bg-gray-700 rounded">
+              <div>
+                <div class="text-sm text-white font-medium">${supp.name}</div>
+                <div class="text-xs text-gray-400">${supp.dose}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-gray-400">${supp.timing || 'As directed'}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  container.innerHTML = html;
+  
+  // Update adherence rate for API mode
+  const rateEl = document.getElementById('today-adherence-rate');
+  if (rateEl) {
+    rateEl.textContent = 'Current Protocol';
+    rateEl.className = 'text-sm font-normal ml-auto text-blue-400';
+  }
+}
+
+// Legacy: Render from hardcoded schedule (fallback)
+function renderHardcodedSupplementSchedule(container) {
   const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
@@ -819,7 +932,7 @@ function renderSupplementSchedule() {
     const currentTimeMinutes = currentHour * 60 + currentMinute;
     
     // Determine slot status
-    const isPast = currentTimeMinutes > slotTimeMinutes + 120; // 2hr grace period
+    const isPast = currentTimeMinutes > slotTimeMinutes + 120;
     const isCurrent = Math.abs(currentTimeMinutes - slotTimeMinutes) <= 60;
     const isFuture = currentTimeMinutes < slotTimeMinutes - 60;
     
@@ -834,7 +947,6 @@ function renderSupplementSchedule() {
     });
     
     const allTaken = slotSupplements.every(s => s.isTaken);
-    const someTaken = slotSupplements.some(s => s.isTaken) && !allTaken;
     
     // Status styling
     let borderClass = 'border-l-4 border-gray-600';
@@ -855,7 +967,7 @@ function renderSupplementSchedule() {
     }
     
     html += `
-      <div class="${bgClass} ${borderClass} rounded-lg p-4 transition-all hover:bg-gray-750">
+      <div class="${bgClass} ${borderClass} rounded-lg p-4 transition-all hover:bg-gray-750 mb-3">
         <div class="flex justify-between items-start mb-3">
           <div class="flex items-center gap-3">
             <div class="text-2xl">${getTimeSlotIcon(key)}</div>
