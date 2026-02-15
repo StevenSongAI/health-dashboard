@@ -684,12 +684,13 @@ let protocolAdherenceLogs = [];
 function renderProtocol() {
   if (!protocolData) return;
   
-  // Calculate protocol metrics
-  const startDate = protocolData.startDate ? new Date(protocolData.startDate) : new Date('2026-01-20');
-  const today = new Date();
-  const dayDiff = Math.floor((today - startDate) / (1000 * 60 * 60 * 24)) + 1;
-  const currentDay = Math.max(1, dayDiff);
-  const totalDays = 112; // 16 weeks
+  // Use API phase data if available, otherwise calculate from startDate
+  const currentDay = protocolData.phase?.day || protocolData.day || 25;
+  const totalDays = protocolData.phase?.totalDays || protocolData.totalDays || 37;
+  const phaseName = protocolData.phase?.name || 'Kill Phase';
+  const phaseStatus = protocolData.phase?.status || 'Active';
+  const startDate = protocolData.startDate ? new Date(protocolData.startDate) : new Date('2026-02-07');
+  
   const daysRemaining = Math.max(0, totalDays - currentDay);
   const progress = Math.min(100, Math.round((currentDay / totalDays) * 100));
   
@@ -702,7 +703,7 @@ function renderProtocol() {
     currentDay >= ((p.week - 1) * 7) && currentDay <= (p.week * 7 + p.duration * 7)
   ) || PROTOCOL_PHASES[0];
   
-  document.getElementById('protocol-phase-name').textContent = currentPhase.name;
+  document.getElementById('protocol-phase-name').textContent = phaseName;
   document.getElementById('protocol-phase-dates').textContent = 
     `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${completionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   document.getElementById('phase-progress').textContent = `${progress}%`;
