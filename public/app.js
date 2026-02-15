@@ -250,39 +250,40 @@ async function checkAlerts() {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
     
     if (sortedSleep.length >= 3) {
-      // Check for CRITICAL: Deep sleep < 30min for 3+ nights
-      const lowDeepSleepNights = sortedSleep.filter(s => (s.deepSleepMinutes || 0) < 30);
+      // Check for CRITICAL: Deep sleep < 30min for 3+ nights (in last 7 days only)
+      const recentSleep = sortedSleep.slice(0, 7); // Last 7 days
+      const lowDeepSleepNights = recentSleep.filter(s => (s.deepSleepMinutes || 0) < 30);
       if (lowDeepSleepNights.length >= 3) {
         alerts.push({
           priority: 'high',
-          message: `CRITICAL: Deep sleep below 30min for ${lowDeepSleepNights.length} nights`,
+          message: `CRITICAL: Deep sleep below 30min for ${lowDeepSleepNights.length} of last 7 nights`,
           recommendation: 'Reduce antimicrobials temporarily. Prioritize sleep hygiene. Consider magnesium before bed.',
           type: 'sleep',
           icon: '🔴'
         });
       }
       
-      // Check for WARNING: Sleep quality < 5 for 3+ nights
-      const poorQualityNights = sortedSleep.filter(s => {
+      // Check for WARNING: Sleep quality < 5 for 3+ nights (in last 7 days)
+      const poorQualityNights = recentSleep.filter(s => {
         const quality = parseInt(s.quality) || 0;
         return quality > 0 && quality < 5;
       });
       if (poorQualityNights.length >= 3) {
         alerts.push({
           priority: 'medium',
-          message: `WARNING: Poor sleep quality for ${poorQualityNights.length} nights`,
+          message: `WARNING: Poor sleep quality for ${poorQualityNights.length} of last 7 nights`,
           recommendation: 'Review sleep environment. Consider reducing evening stress. Check for die-off symptoms.',
           type: 'sleep',
           icon: '🟡'
         });
       }
       
-      // Check for WARNING: Total sleep < 5hrs for 3+ nights
-      const shortSleepNights = sortedSleep.filter(s => (s.totalHours || s.hours || 0) < 5);
+      // Check for WARNING: Total sleep < 5hrs for 3+ nights (in last 7 days)
+      const shortSleepNights = recentSleep.filter(s => (s.totalHours || s.hours || 0) < 5);
       if (shortSleepNights.length >= 3) {
         alerts.push({
           priority: 'medium',
-          message: `WARNING: Less than 5 hours sleep for ${shortSleepNights.length} nights`,
+          message: `WARNING: Less than 5 hours sleep for ${shortSleepNights.length} of last 7 nights`,
           recommendation: 'Sleep debt accumulating. Prioritize 7-8 hours tonight. Avoid caffeine after 2pm.',
           type: 'sleep',
           icon: '🟡'
@@ -344,6 +345,17 @@ async function loadOverview() {
   document.getElementById('today-logs').textContent = data.todayStatus?.logsCount || 0;
   document.getElementById('today-supps').textContent = `${data.todayStatus?.supplementsTaken || 0}/6`;
   document.getElementById('today-symptoms').textContent = data.todayStatus?.symptomsLogged || 0;
+  
+  // Update phase info from protocol data
+  const phaseNameEl = document.getElementById('phase-name');
+  const phaseDaysEl = document.getElementById('phase-days');
+  if (phaseNameEl && data.protocol?.phase) {
+    phaseNameEl.textContent = data.protocol.phase.name || 'Kill Phase';
+  }
+  if (phaseDaysEl && data.protocol?.phase) {
+    const daysRemaining = data.protocol.phase.totalDays - data.protocol.phase.day;
+    phaseDaysEl.textContent = daysRemaining > 0 ? `${daysRemaining} days left` : 'Complete';
+  }
   
   // HRV Status Card
   await loadHRVStatus();
@@ -3319,7 +3331,7 @@ async function loadBriefings() {
           <span class="text-2xl">${b.type === 'morning' ? '🌅' : '🌙'}</span>
           <div>
             <h3 class="font-semibold capitalize">${b.type} Briefing</h3>
-            <p class="text-xs text-gray-400">${new Date(b.createdAt).toLocaleString()}</p>
+            <p class="text-xs text-gray-400">${b.created_at ? new Date(b.created_at).toLocaleString() : 'Just now'}</p>
           </div>
         </div>
         <span class="text-xs text-gray-500">${b.generatedBy === 'agent' ? '🤖 Agent' : '👤 User'}</span>
