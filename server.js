@@ -293,6 +293,17 @@ app.get('/api/alerts', async (req, res) => {
   }
 });
 
+// --- Supplements ---
+app.get('/api/supplements', async (req, res) => {
+  try {
+    const result = await getPool().query('SELECT data FROM protocol_data ORDER BY updated_at DESC LIMIT 1');
+    const protocol = result.rows[0]?.data || { supplements: [] };
+    res.json(protocol.supplements || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Protocol ---
 app.get('/api/protocol', async (req, res) => {
   try {
