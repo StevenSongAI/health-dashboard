@@ -106,6 +106,9 @@
         <button onclick="showTab('protocol')" id="nav-protocol" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
           <span>💊</span> Protocol
         </button>
+        <button onclick="showTab('ramp')" id="nav-ramp" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
+          <span>📈</span> Ramp
+        </button>
         <button onclick="showTab('symptoms')" id="nav-symptoms" class="nav-item flex items-center gap-3 px-4 py-3 text-sm whitespace-nowrap md:whitespace-normal">
           <span>📊</span> Symptoms
         </button>
@@ -469,6 +472,105 @@
             <div id="protocol-history" class="text-sm text-gray-400">
               <p>No changes yet</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: RAMP CALCULATOR -->
+      <div id="tab-ramp" class="tab-content">
+        <h2 class="text-2xl font-bold mb-2">📈 Supplement Ramp Calculator</h2>
+        <p class="text-gray-400 mb-6">HRV-guided dose escalation for SIBO antimicrobials</p>
+
+        <!-- Input Section -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold mb-4">Current Status</h3>
+          
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Current HRV (ms)</label>
+              <input type="number" id="ramp-hrv" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="86">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">HRV Baseline (ms)</label>
+              <input type="number" id="ramp-baseline" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="62">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Current Allimax</label>
+              <input type="number" id="ramp-allimax" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="1" min="0" max="6" step="0.5">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Current Neem</label>
+              <input type="number" id="ramp-neem" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="1" min="0" max="6" step="0.5">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Kill Phase Day</label>
+              <input type="number" id="ramp-day" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="26" min="1" max="56">
+              <p class="text-xs text-gray-500 mt-1">Day 26 of 37</p>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Bloating (0-10)</label>
+              <input type="number" id="ramp-bloating" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="3" min="0" max="10">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-2">Fatigue (0-10)</label>
+              <input type="number" id="ramp-fatigue" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white" value="2" min="0" max="10">
+            </div>
+          </div>
+
+          <button onclick="calculateRamp()" class="w-full bg-primary-600 hover:bg-primary-500 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+            Calculate Ramp Schedule
+          </button>
+        </div>
+
+        <!-- Clearance Status -->
+        <div id="ramp-clearance" class="card p-6 mb-6 hidden">
+          <h3 class="text-lg font-semibold mb-4">Ramp Clearance Status</h3>
+          <div id="ramp-checkpoints" class="grid grid-cols-2 gap-4 mb-4"></div>
+          <div id="ramp-clearance-result"></div>
+        </div>
+
+        <!-- Schedule -->
+        <div id="ramp-schedule-section" class="card p-6 mb-6 hidden">
+          <h3 class="text-lg font-semibold mb-4">7-Day Ramp Schedule</h3>
+          <div class="w-full bg-gray-700 rounded-full h-3 mb-4">
+            <div id="ramp-progress" class="bg-gradient-to-r from-primary-500 to-purple-500 h-3 rounded-full transition-all" style="width: 0%"></div>
+          </div>
+          <div id="ramp-schedule" class="space-y-2"></div>
+        </div>
+
+        <!-- Checkpoints -->
+        <div id="ramp-checkpoints-section" class="card p-6 mb-6 hidden">
+          <h3 class="text-lg font-semibold mb-4">Daily Checkpoints</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex items-center gap-2 p-3 bg-gray-800 rounded-lg">
+              <span class="text-yellow-500">⚠</span>
+              <span>HRV must stay ≥ <span id="checkpoint-hrv">70</span>ms (≥8ms above baseline)</span>
+            </div>
+            <div class="flex items-center gap-2 p-3 bg-gray-800 rounded-lg">
+              <span class="text-yellow-500">⚠</span>
+              <span>No severe die-off (fatigue >6/10, bloating >6/10)</span>
+            </div>
+            <div class="flex items-center gap-2 p-3 bg-gray-800 rounded-lg">
+              <span class="text-yellow-500">⚠</span>
+              <span>Increase dose only every 48-72h if checkpoints pass</span>
+            </div>
+            <div class="flex items-center gap-2 p-3 bg-red-900/30 border border-red-600 rounded-lg">
+              <span class="text-red-500">🛑</span>
+              <span class="text-red-400">ABORT if HRV drops below <span id="checkpoint-abort">60</span>ms for 2 consecutive readings</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Today's Action -->
+        <div id="ramp-action" class="card p-6 hidden">
+          <h3 class="text-lg font-semibold mb-4">Today's Action</h3>
+          <div id="ramp-action-content"></div>
+          <div class="mt-4 text-xs text-gray-500">
+            <p>💊 Prokinetic: Continue 2 MotilPro Artichoke + 1 Ginger at bedtime</p>
+            <p>⏰ Timing: Take antimicrobials with breakfast; prokinetics 4+ hours after dinner</p>
           </div>
         </div>
       </div>
@@ -1201,6 +1303,175 @@
     </div>
   </div>
 
+  <script>
+    // Supplement Ramp Calculator
+    function calculateRamp() {
+      const hrv = parseInt(document.getElementById('ramp-hrv').value) || 0;
+      const baseline = parseInt(document.getElementById('ramp-baseline').value) || 62;
+      const allicin = parseFloat(document.getElementById('ramp-allimax').value) || 0;
+      const neem = parseFloat(document.getElementById('ramp-neem').value) || 0;
+      const day = parseInt(document.getElementById('ramp-day').value) || 26;
+      const bloating = parseInt(document.getElementById('ramp-bloating').value) || 0;
+      const fatigue = parseInt(document.getElementById('ramp-fatigue').value) || 0;
+
+      const hrvDelta = hrv - baseline;
+      const canRamp = hrvDelta >= 8 && bloating <= 6 && fatigue <= 6;
+
+      // Show sections
+      document.getElementById('ramp-clearance').classList.remove('hidden');
+      document.getElementById('ramp-schedule-section').classList.remove('hidden');
+      document.getElementById('ramp-checkpoints-section').classList.remove('hidden');
+      document.getElementById('ramp-action').classList.remove('hidden');
+
+      // Update checkpoint values
+      document.getElementById('checkpoint-hrv').textContent = baseline + 8;
+      document.getElementById('checkpoint-abort').textContent = baseline - 2;
+
+      // Clearance Checkpoints
+      const hrvStatus = hrvDelta >= 8 ? 'pass' : hrvDelta >= 0 ? 'wait' : 'fail';
+      const hrvIcon = hrvDelta >= 8 ? '✓' : hrvDelta >= 0 ? '◐' : '✗';
+      const hrvColor = hrvDelta >= 8 ? 'text-green-500' : hrvDelta >= 0 ? 'text-yellow-500' : 'text-red-500';
+      
+      const bloatingStatus = bloating <= 6 ? 'pass' : 'fail';
+      const bloatingIcon = bloating <= 6 ? '✓' : '✗';
+      const bloatingColor = bloating <= 6 ? 'text-green-500' : 'text-red-500';
+      
+      const fatigueStatus = fatigue <= 6 ? 'pass' : 'fail';
+      const fatigueIcon = fatigue <= 6 ? '✓' : '✗';
+      const fatigueColor = fatigue <= 6 ? 'text-green-500' : 'text-red-500';
+      
+      const dayStatus = day < 37 ? 'pass' : day < 56 ? 'wait' : 'fail';
+      const dayIcon = day < 37 ? '✓' : day < 56 ? '◐' : '✗';
+      const dayColor = day < 37 ? 'text-green-500' : day < 56 ? 'text-yellow-500' : 'text-red-500';
+
+      document.getElementById('ramp-checkpoints').innerHTML = `
+        <div class="p-3 bg-gray-800 rounded-lg border ${hrvStatus === 'pass' ? 'border-green-600' : hrvStatus === 'wait' ? 'border-yellow-600' : 'border-red-600'}">
+          <div class="flex items-center gap-2">
+            <span class="${hrvColor} text-xl">${hrvIcon}</span>
+            <div>
+              <div class="font-semibold">HRV Status</div>
+              <div class="text-xs text-gray-400">${hrv}ms (${hrvDelta >= 0 ? '+' : ''}${hrvDelta}ms vs baseline)</div>
+            </div>
+          </div>
+        </div>
+        <div class="p-3 bg-gray-800 rounded-lg border ${bloatingStatus === 'pass' ? 'border-green-600' : 'border-red-600'}">
+          <div class="flex items-center gap-2">
+            <span class="${bloatingColor} text-xl">${bloatingIcon}</span>
+            <div>
+              <div class="font-semibold">Bloating</div>
+              <div class="text-xs text-gray-400">${bloating}/10 ${bloating > 6 ? '- Too high' : ''}</div>
+            </div>
+          </div>
+        </div>
+        <div class="p-3 bg-gray-800 rounded-lg border ${fatigueStatus === 'pass' ? 'border-green-600' : 'border-red-600'}">
+          <div class="flex items-center gap-2">
+            <span class="${fatigueColor} text-xl">${fatigueIcon}</span>
+            <div>
+              <div class="font-semibold">Fatigue</div>
+              <div class="text-xs text-gray-400">${fatigue}/10 ${fatigue > 6 ? '- Too high' : ''}</div>
+            </div>
+          </div>
+        </div>
+        <div class="p-3 bg-gray-800 rounded-lg border ${dayStatus === 'pass' ? 'border-green-600' : dayStatus === 'wait' ? 'border-yellow-600' : 'border-red-600'}">
+          <div class="flex items-center gap-2">
+            <span class="${dayColor} text-xl">${dayIcon}</span>
+            <div>
+              <div class="font-semibold">Protocol Day</div>
+              <div class="text-xs text-gray-400">Day ${day} ${day >= 37 ? '(extension)' : ''}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Clearance Result
+      document.getElementById('ramp-clearance-result').innerHTML = `
+        <div class="mt-4 p-4 rounded-lg ${canRamp ? 'bg-green-900/30 border border-green-600' : 'bg-red-900/30 border border-red-600'}">
+          <div class="font-bold text-lg">${canRamp ? '🟢 CLEARED FOR RAMP' : '🔴 HOLD — Do Not Increase Dose'}</div>
+          <div class="text-sm mt-1">${canRamp ? 'All checkpoints passed. Proceed with gradual escalation.' : 'Address failed checkpoints before increasing dose.'}</div>
+        </div>
+      `;
+
+      // Generate Schedule
+      const targetAllimax = 2;
+      const targetNeem = 2;
+      const schedule = [];
+      let currentAllimax = allicin;
+      let currentNeem = neem;
+      
+      const today = new Date();
+      
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() + i);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        let action, actionClass, allimaxDose, neemDose;
+        
+        if (!canRamp) {
+          action = 'HOLD';
+          actionClass = 'bg-yellow-600';
+          allimaxDose = currentAllimax;
+          neemDose = currentNeem;
+        } else if (i === 0) {
+          action = 'BASELINE';
+          actionClass = 'bg-blue-600';
+          allimaxDose = currentAllimax;
+          neemDose = currentNeem;
+        } else if (currentAllimax < targetAllimax || currentNeem < targetNeem) {
+          action = 'INCREASE';
+          actionClass = 'bg-green-600';
+          currentAllimax = Math.min(currentAllimax + 0.5, targetAllimax);
+          currentNeem = Math.min(currentNeem + 0.5, targetNeem);
+          allimaxDose = currentAllimax;
+          neemDose = currentNeem;
+        } else {
+          action = 'MAINTAIN';
+          actionClass = 'bg-primary-600';
+          allimaxDose = targetAllimax;
+          neemDose = targetNeem;
+        }
+        
+        schedule.push({ date: dateStr, action, actionClass, allimax: allimaxDose, neem: neemDose });
+      }
+
+      // Progress calculation
+      const progress = Math.min((allicin / targetAllimax) * 100, 100);
+      document.getElementById('ramp-progress').style.width = `${progress}%`;
+
+      // Render Schedule
+      document.getElementById('ramp-schedule').innerHTML = schedule.map((s, idx) => `
+        <div class="flex items-center justify-between p-3 ${idx === 0 ? 'bg-indigo-900/30 border border-indigo-600 rounded-lg' : 'bg-gray-800 rounded-lg'}">
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-400 w-14">${s.date}</span>
+            <span class="px-3 py-1 rounded-full text-xs font-semibold ${s.actionClass}">${s.action}</span>
+          </div>
+          <div class="text-sm">
+            <span class="text-gray-400">Allimax:</span> <span class="font-semibold">${s.allimax}</span>
+            <span class="text-gray-600 mx-2">|</span>
+            <span class="text-gray-400">Neem:</span> <span class="font-semibold">${s.neem}</span>
+          </div>
+        </div>
+      `).join('');
+
+      // Today's Action
+      const nextAllimax = Math.min(allimax + 0.5, targetAllimax);
+      const nextNeem = Math.min(neem + 0.5, targetNeem);
+      const nextDose = canRamp && (allicin < targetAllimax || neem < targetNeem) 
+        ? `<div class="mb-2">Next dose (tomorrow): <span class="px-3 py-1 rounded-full text-sm font-semibold bg-green-600">${nextAllimax} Allimax + ${nextNeem} Neem</span></div>`
+        : '';
+      
+      document.getElementById('ramp-action-content').innerHTML = `
+        <div class="p-4 rounded-lg ${canRamp ? 'bg-indigo-900/30 border border-indigo-600' : 'bg-yellow-900/30 border border-yellow-600'}">
+          <div class="font-semibold mb-2">Current Dose</div>
+          <div class="mb-4">
+            <span class="px-3 py-1 rounded-full text-sm font-semibold bg-primary-600">${allicin} Allimax + ${neem} Neem</span>
+          </div>
+          ${nextDose}
+          <div class="text-sm text-gray-400 mt-3">${canRamp ? '✓ You may increase dose tomorrow if checkpoints still pass' : '⚠ Stay at current dose until checkpoints clear'}</div>
+        </div>
+      `;
+    }
+  </script>
   <script src="app.js?v=9"></script>
 </body>
 </html>
