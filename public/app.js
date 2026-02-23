@@ -41,6 +41,7 @@ function showTab(tabName) {
   if (tabName === 'vitals') loadVitals();
   if (tabName === 'sleep') loadSleep();
   if (tabName === 'protocol') renderProtocol();
+  if (tabName === 'briefings') loadBriefings();
   if (tabName === 'sibo-advanced') {
     // Initialize first SIBO section
     showSiboSection('dieoff');
